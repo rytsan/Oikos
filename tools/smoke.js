@@ -29,4 +29,15 @@ const perRigido = new OIKOS.Elliptic.Pendulum({ id: 'main', omega: 1 }).period()
 console.log('periodo main com k=0.9:', perRigido.toFixed(3));
 assert.ok(perRigido > per, 'periodo nao cresce com k');
 
+// S3 integrado: as funcoes puras do render respondem sem canvas.
+assert.ok(OIKOS.Render && typeof OIKOS.Render.draw === 'function', 'Render ausente');
+const p = OIKOS.Render.project(10, 10);
+const q = OIKOS.Render.unproject(p.x, p.y);
+console.log('render roundtrip (10,10):', q.x + ',' + q.y);
+assert.strictEqual(q.x, 10, 'roundtrip x');
+assert.strictEqual(q.y, 10, 'roundtrip y');
+const vis = OIKOS.Render.visibleTiles(960, 540);
+console.log('visibleTiles 960x540:', vis.length, 'tiles');
+assert.ok(vis.length > 0, 'visibleTiles vazio');
+
 console.log('SMOKE OK');

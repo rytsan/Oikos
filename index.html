@@ -7,9 +7,11 @@
 <style>
   html,body{margin:0;height:100%;background:#14171c;color:#dfe4ea;
     font:13px/1.45 ui-monospace,Consolas,monospace;overflow:hidden}
+  canvas{display:block}
 </style>
 </head>
 <body>
+<canvas id="oikos"></canvas>
 <script>
 /* ===== OIKOS S1 KERNEL — INÍCIO ===== */
 (function (global) {
@@ -840,6 +842,411 @@
   O.Chron = { log: log, query: query, timeline: timeline, probe: probe };
 })(window);
 /* ===== OIKOS S6 CHRONICLES — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S3 RENDER — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Paleta por terrain (0..7). Cor base; a variação por tile multiplica o
+  // brilho, e a tabela de cores é PRÉ-COMPUTADA por bucket — nenhuma string
+  // de cor é montada dentro do laço de desenho.
+  // ---------------------------------------------------------------------
+  var BASE = [
+    [27, 58, 92],    // 0 oceano
+    [47, 127, 179],  // 1 água doce
+    [217, 200, 154], // 2 areia
+    [111, 156, 74],  // 3 grama
+    [138, 168, 72],  // 4 fértil
+    [47, 90, 46],    // 5 floresta
+    [138, 133, 124], // 6 pedra
+    [104, 99, 94]    // 7 montanha
+  ];
+  var COR_RESOURCE = [null, '#b4553a', '#7fd4e8', '#c87f3a', '#9aa4b0', '#3a3a42'];
+  var BUCKETS = 8;
+  var ALTURA_PREDIO = 24;      // px de sprite, base do culling com margem
+  var AGUA_SUJA = [92, 84, 58];
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function hex(r, g, b) {
+    return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  }
+
+  // tabela[terrain][bucket] — montada uma vez por carga do módulo.
+  var TABELA = (function () {
+    var t = [], i, b;
+    for (i = 0; i < BASE.length; i++) {
+      t[i] = [];
+      for (b = 0; b < BUCKETS; b++) {
+        var f = 0.90 + (b / (BUCKETS - 1)) * 0.20;   // 0.90 .. 1.10
+        t[i][b] = hex(clamp(BASE[i][0] * f, 0, 255),
+                      clamp(BASE[i][1] * f, 0, 255),
+                      clamp(BASE[i][2] * f, 0, 255));
+      }
+    }
+    return t;
+  })();
+
+  // ---------------------------------------------------------------------
+  // Cache de variação visual, CHAVEADO PELA SEED (spec S3). Nunca se chama
+  // rng dentro de draw(): o bucket de cada tile é sorteado uma única vez por
+  // seed, no stream 'render'.
+  // ---------------------------------------------------------------------
+  var cache = { seed: null, bucket: null };
+
+  function garantirCache() {
+    var st = O.state, N = O.consts.MAP * O.consts.MAP;
+    if (cache.seed === st.seed && cache.bucket && cache.bucket.length === N) {
+      return cache.bucket;
+    }
+    var r = O.makeRng(st.seed).child('render');
+    var b = new Uint8Array(N);
+    for (var i = 0; i < N; i++) b[i] = r.i(BUCKETS);
+    cache.seed = st.seed;
+    cache.bucket = b;
+    return b;
+  }
+
+  // ---------------------------------------------------------------------
+  // Geometria isométrica 2:1. Meia-largura e meia-altura SEMPRE lidas de
+  // consts (regra 5.8) — a spec cita 32 e 16, que são TILE_W/2 e TILE_H/2.
+  // ---------------------------------------------------------------------
+  function HW() { return O.consts.TILE_W / 2; }
+  function HH() { return O.consts.TILE_H / 2; }
+  function zoomVivo() {
+    var z = Number(O.state.camera.zoom);
+    if (!isFinite(z) || z <= 0) z = 1;
+    return clamp(z, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+  }
+
+  // DECISÃO: project devolve o CENTRO do losango do tile, em pixels de tela,
+  // já com câmera e zoom aplicados. camera.x/y é deslocamento em pixels (o
+  // ponto de tela onde vive o tile (0,0)); não precisa das dimensões do
+  // canvas, o que mantém project/unproject puros e testáveis sem browser.
+  function project(tx, ty) {
+    var c = O.state.camera, z = zoomVivo();
+    return {
+      x: (tx - ty) * HW() * z + c.x,
+      y: (tx + ty) * HH() * z + c.y
+    };
+  }
+
+  // unproject — inverso exato: qual tile contém este ponto de tela.
+  // Os losangos |dx|/HW + |dy|/HH <= 1 centrados nos tiles ladrilham o plano
+  // sem sobreposição, então o centro MAIS PRÓXIMO é o losango que contém o
+  // ponto: arredondar resolve o picking exato, inclusive nos 4 cantos.
+  function unproject(sx, sy) {
+    var c = O.state.camera, z = zoomVivo();
+    var u = (sx - c.x) / (HW() * z);
+    var v = (sy - c.y) / (HH() * z);
+    return { x: Math.round((u + v) / 2), y: Math.round((v - u) / 2) };
+  }
+
+  // ---------------------------------------------------------------------
+  // LACUNA: a carta define "tiles fora da fronteira não são zoneáveis" na
+  // spec S9, que ainda não existe. Escolho a regra mais simples que já é
+  // verdadeira hoje: dentro do mapa e em terra. Quando S9 entrar, a checagem
+  // de fronteira soma-se a esta — nada aqui precisará ser reescrito.
+  // DECISÃO: montanha (7) É zoneável; a S9 prevê "montanha ×2" no custo de
+  // decreto, o que pressupõe que montanha pode ser tomada.
+  // ---------------------------------------------------------------------
+  function isZoneable(x, y) {
+    var M = O.consts.MAP;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    if (!isFinite(x) || !isFinite(y)) return false;
+    if (Math.floor(x) !== x || Math.floor(y) !== y) return false;
+    if (x < 0 || y < 0 || x >= M || y >= M) return false;
+    return O.state.tiles.terrain[y * M + x] >= 2;   // 0 oceano, 1 água doce
+  }
+
+  // ---------------------------------------------------------------------
+  // DECISÃO: visibleTiles e paintOrder trafegam ÍNDICES (i = y*MAP+x), não
+  // objetos {x,y}. É a convenção de indexação da própria carta (5.3) e é o
+  // que faz o orçamento de 5 ms para 1000 chamadas ser alcançável — devolver
+  // ~500 objetos por chamada seria meio milhão de alocações no teste.
+  // ---------------------------------------------------------------------
+
+  // Ordem do pintor: (x+y) ASC e, no empate, y ASC. Assim (11,9) é pintado
+  // ANTES de (10,10) — ambos somam 20 — e a casa em (10,10) oclui (11,9),
+  // exatamente como a spec exige. O terceiro critério (x ASC) só garante
+  // ordem total determinística.
+  function paintOrder(indices) {
+    var M = O.consts.MAP;
+    return Array.prototype.slice.call(indices).sort(function (a, b) {
+      var ax = a % M, ay = (a - ax) / M;
+      var bx = b % M, by = (b - bx) / M;
+      return ((ax + ay) - (bx + by)) || (ay - by) || (ax - bx);
+    });
+  }
+
+  // Culling: caixa envolvente em espaço de tile dos 4 cantos da viewport,
+  // folgada em 1 tile + a altura do sprite convertida em tiles.
+  // DECISÃO: devolve Int16Array e não Array de objetos. O aceite exige
+  // 1000×(unproject+visibleTiles) < 5 ms; a ~1100 tiles visíveis por chamada
+  // isso é 1,1 milhão de escritas, e alocar objeto por tile não cabe no
+  // orçamento. Int16Array comporta o índice máximo (56²−1 = 3135).
+  function visibleTiles(w, h) {
+    var M = O.consts.MAP;
+    w = Number(w); h = Number(h);
+    if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return new Int16Array(0);
+
+    var margem = 1 + Math.ceil(ALTURA_PREDIO / O.consts.TILE_H);
+    var a = unproject(0, 0), b = unproject(w, 0);
+    var c = unproject(0, h), d = unproject(w, h);
+
+    var minX = Math.min(a.x, b.x, c.x, d.x) - margem;
+    var maxX = Math.max(a.x, b.x, c.x, d.x) + margem;
+    var minY = Math.min(a.y, b.y, c.y, d.y) - margem;
+    var maxY = Math.max(a.y, b.y, c.y, d.y) + margem;
+
+    if (minX < 0) minX = 0; if (minY < 0) minY = 0;
+    if (maxX > M - 1) maxX = M - 1; if (maxY > M - 1) maxY = M - 1;
+
+    if (maxX < minX || maxY < minY) return new Int16Array(0);
+    var out = new Int16Array((maxX - minX + 1) * (maxY - minY + 1)), n = 0;
+    for (var y = minY; y <= maxY; y++) {
+      var base = y * M;
+      for (var x = minX; x <= maxX; x++) out[n++] = base + x;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
+  // Câmera. camZoom é a ÚNICA fonte do zoom com ponto-fixo: o ponto de mundo
+  // sob o cursor permanece sob o cursor. O handler da roda delega aqui, e o
+  // harness testa a invariância pela mesma função (via state.camera).
+  // ---------------------------------------------------------------------
+  function camZoom(sx, sy, fator) {
+    var c = O.state.camera;
+    var z0 = zoomVivo();
+    var z1 = clamp(z0 * fator, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+    if (z1 === z0) return;
+    // ponto de mundo sob o cursor, em unidades de tela a zoom 1
+    var wx = (sx - c.x) / z0, wy = (sy - c.y) / z0;
+    c.x = sx - wx * z1;
+    c.y = sy - wy * z1;
+    c.zoom = z1;
+  }
+
+  function centrarCamera(w, h) {
+    var c = O.state.camera, M = O.consts.MAP, z = zoomVivo();
+    c.x = w / 2;
+    c.y = h / 2 - ((M - 1) * HH() * z);
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas e entrada. S3 é uma das duas exceções autorizadas ao DOM.
+  // ---------------------------------------------------------------------
+  // EMENDA v1.9 D36: 'centrado' guarda a IDENTIDADE do estado já centrado, não
+  // um booleano — reset() e load() reatribuem o objeto e a câmera precisa
+  // voltar ao centro da ilha nova.
+  var cv = null, ctx = null, ligado = false, centrado = null;
+  var arrastando = false, ultimoX = 0, ultimoY = 0;
+
+  function pegarCanvas() {
+    if (ctx) return ctx;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    cv = document.getElementById('oikos');
+    if (!cv) {
+      cv = document.createElement('canvas');
+      cv.id = 'oikos';
+      cv.width = 960; cv.height = 540;
+      if (document.body) document.body.appendChild(cv);
+    }
+    if (typeof cv.getContext !== 'function') { cv = null; return null; }
+    ctx = cv.getContext('2d');
+    if (ctx && !ligado) ligarEntrada();
+    return ctx;
+  }
+
+  function posNoCanvas(ev) {
+    var r = (cv && cv.getBoundingClientRect) ? cv.getBoundingClientRect() : { left: 0, top: 0 };
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  function ligarEntrada() {
+    ligado = true;
+    cv.addEventListener('mousedown', function (ev) {
+      arrastando = true;
+      var p = posNoCanvas(ev); ultimoX = p.x; ultimoY = p.y;
+    });
+    global.addEventListener('mouseup', function () { arrastando = false; });
+    cv.addEventListener('mousemove', function (ev) {
+      var p = posNoCanvas(ev);
+      if (arrastando) {
+        O.state.camera.x += p.x - ultimoX;
+        O.state.camera.y += p.y - ultimoY;
+        ultimoX = p.x; ultimoY = p.y;
+      }
+      var t = unproject(p.x, p.y);
+      O.state.hover = isZoneable(t.x, t.y) || dentro(t.x, t.y) ? { x: t.x, y: t.y } : null;
+    });
+    cv.addEventListener('mouseleave', function () { O.state.hover = null; });
+    cv.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      var p = posNoCanvas(ev);
+      camZoom(p.x, p.y, ev.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+  }
+
+  function dentro(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  // ---------------------------------------------------------------------
+  // Desenho. Camadas: oceano de fundo → terreno → resource → fronteira →
+  // edifícios por paintOrder → overlay de hover.
+  // draw() altera SOMENTE camera e hover.
+  // ---------------------------------------------------------------------
+  function losango(g, px, py, hw, hh) {
+    g.beginPath();
+    g.moveTo(px, py - hh);
+    g.lineTo(px + hw, py);
+    g.lineTo(px, py + hh);
+    g.lineTo(px - hw, py);
+    g.closePath();
+  }
+
+  function corDaAgua(terr, i, bucket) {
+    var p = clamp(O.state.tiles.pollution[i] || 0, 0, 1);
+    if (p <= 0) return TABELA[terr][bucket];
+    var b = BASE[terr];
+    return hex(b[0] + (AGUA_SUJA[0] - b[0]) * p,
+               b[1] + (AGUA_SUJA[1] - b[1]) * p,
+               b[2] + (AGUA_SUJA[2] - b[2]) * p);
+  }
+
+  function draw(dt) {
+    var g = pegarCanvas();
+    if (!g) return;                     // sob Node não há canvas: no-op limpo
+
+    var st = O.state, M = O.consts.MAP;
+    var W = cv.width, H = cv.height;
+    // EMENDA v1.9 D36: compara identidade, não flag booleana.
+    if (centrado !== st) { centrarCamera(W, H); centrado = st; }
+
+    var z = zoomVivo();
+    st.camera.zoom = z;                 // clamp espelhado no estado
+    var hw = HW() * z, hh = HH() * z;
+    var bucket = garantirCache();
+    var T = st.tiles.terrain, R = st.tiles.resource;
+    var B = st.tiles.building, OWN = st.tiles.owner;
+
+    // 1. oceano de fundo
+    g.fillStyle = TABELA[0][3];
+    g.fillRect(0, 0, W, H);
+
+    var vis = visibleTiles(W, H);
+    var i, k, x, y, p;
+
+    // 2. terreno
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k]; x = i % M; y = (i - x) / M;
+      var terr = T[i];
+      // EMENDA v1.9 D35: oceano poluído NÃO pode ser pulado. O retângulo de
+      // fundo é mar limpo, e corDaAgua é quem interpola pollution[] — pular
+      // terrain 0 deixava oceano sujo com cor de mar limpo.
+      if (terr === 0 && !(st.tiles.pollution[i] > 0)) continue;
+      p = project(x, y);
+      g.fillStyle = (terr <= 1) ? corDaAgua(terr, i, bucket[i]) : TABELA[terr][bucket[i]];
+      losango(g, p.x, p.y, hw, hh);
+      g.fill();
+    }
+
+    // 3. marcadores de resource
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!R[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      g.fillStyle = COR_RESOURCE[R[i]] || '#fff';
+      g.beginPath();
+      g.arc(p.x, p.y, Math.max(1.5, 3 * z), 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // 4. fronteira — contorno dos tiles com dono
+    g.strokeStyle = 'rgba(240,225,160,0.75)';
+    g.lineWidth = Math.max(1, z);
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!OWN[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+
+    // 5. edifícios na ordem do pintor (placeholder de caixa 3-tons)
+    var ordem = paintOrder(vis);
+    for (k = 0; k < ordem.length; k++) {
+      i = ordem[k];
+      if (!B[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      var alt = ALTURA_PREDIO * z * (1 + (st.tiles.level[i] || 0) * 0.5);
+      g.fillStyle = '#8d7f6a';                                  // topo
+      losango(g, p.x, p.y - alt, hw * 0.7, hh * 0.7);
+      g.fill();
+      g.fillStyle = '#6d6152';                                  // face esquerda
+      g.beginPath();
+      g.moveTo(p.x - hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x - hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+      g.fillStyle = '#574d41';                                  // face direita
+      g.beginPath();
+      g.moveTo(p.x + hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x + hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+    }
+
+    // 6. overlay de hover — verde se zoneável, vermelho se não
+    var hv = st.hover;
+    if (hv && dentro(hv.x, hv.y)) {
+      p = project(hv.x, hv.y);
+      g.strokeStyle = isZoneable(hv.x, hv.y) ? 'rgba(120,240,120,0.95)' : 'rgba(240,110,110,0.95)';
+      g.lineWidth = Math.max(1.5, 2 * z);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+  }
+
+  // Leitor puro: registra draw e NADA de update (a spec é explícita).
+  O.use('Render', { draw: draw });
+
+  O.Render = {
+    draw: draw,
+    project: project,
+    unproject: unproject,
+    isZoneable: isZoneable,
+    paintOrder: paintOrder,
+    visibleTiles: visibleTiles
+  };
+})(window);
+/* ===== OIKOS S3 RENDER — FIM ===== */
+</script>
+<script>
+// Arranque mínimo: dimensiona o canvas à janela, gera a ilha e sobe o loop.
+// Guardado para o NAVEGADOR: sob Node (smoke do integrador) não há canvas nem
+// addEventListener, e start() agendaria rAF para sempre, travando o processo.
+(function () {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
+  var cv = document.getElementById('oikos');
+  function medir() { cv.width = window.innerWidth; cv.height = window.innerHeight; }
+  medir();
+  window.addEventListener('resize', medir);
+  OIKOS.reset(42);
+  OIKOS.Worldgen.generate();
+  OIKOS.loop.start();
+})();
 </script>
 </body>
 </html>
