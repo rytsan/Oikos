@@ -15,8 +15,10 @@ let summary = null;
 const log = console.log.bind(console);
 console.log = function (...args) {
   const line = args.map(String).join(' ');
-  const m = /harness:\s*(\d+)\/(\d+)\s*PASS/.exec(line);
-  if (m) summary = { pass: +m[1], total: +m[2] };
+  // Formato contratual (carta secao 4 item 9c): "x/x PASS (+y SKIP [browser])".
+  // O sufixo de SKIP e opcional — devolucoes sem criterio [browser] o omitem.
+  const m = /harness:\s*(\d+)\/(\d+)\s*PASS(?:\s*\(\+(\d+)\s*SKIP)?/.exec(line);
+  if (m) summary = { pass: +m[1], total: +m[2], skip: m[3] === undefined ? null : +m[3] };
   log(...args);
 };
 
@@ -30,6 +32,7 @@ for (let i = 0; i < scripts.length; i++) {
   while (!summary && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
   if (!summary) { console.error('TIMEOUT: harness nao imprimiu o resumo em 30 s'); process.exit(1); }
   console.log('# resultado: ' + summary.pass + '/' + summary.total +
-    (summary.pass === summary.total ? ' PASS' : ' — HA FALHAS'));
+    (summary.pass === summary.total ? ' PASS' : ' — HA FALHAS') +
+    (summary.skip === null ? '' : ' (+' + summary.skip + ' SKIP [browser] — aceite visual pelo dono)'));
   process.exit(summary.pass === summary.total ? 0 : 1);
 })();
