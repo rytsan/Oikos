@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.13 · Estado: rodadas 2, 3 e 4 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7 no index.html, smoke OK); rodada 5 (S8 Eras + S9 Fronteira) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.14 · Estado: rodadas 2, 3 e 4 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7 no index.html, smoke OK); rodada 5 (S8 Eras + S9 Fronteira) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -203,6 +203,8 @@ D41	Emenda S7 na extração: era:ready é chaveado pela ERA VIGENTE, não por se
 D42	Emenda S7 na extração: tile:changed passa a emitir { i, x, y, ... } nos dois pontos de emissão	place() emitia coordenadas e degradar() emitia índice linear; quem escuta não pode ter de tratar dois formatos — mesma razão da D38 para mods:changed (achado 2 da auditoria do S7)
 D43	Emenda S7 na extração: geo.forestTiles e geo.fertileTiles são mantidos VIVOS pela degradação	a spec da S8 dimensiona a carta de decisão por state.geo e a seção 2 exige efeitos sensíveis a contexto; com geo congelado no worldgen, uma decisão da Era 4 se dimensionaria sobre a floresta que existia na Era 1
 D44	Emenda S7 na extração: canBuild recusa tile fora da fronteira QUANDO a fronteira existe, lendo tiles.owner direto	a spec da S9 diz que tile fora da fronteira não é zoneável, mas quem valida é o S7, e a seção 4.2 não permite que ele consuma Border — então a checagem lê o campo compartilhado, não o módulo vizinho. O "quando existe" não é cautela decorativa: com owner ainda todo zerado, enforce incondicional deixaria a Casa sem lugar para a primeira construção. Decisão do dono contra a proposta do parecer da S9, que adiava a aplicação para a fase de UI
+D45	Emenda S8 na extração: abrirDecisao() não pausa nem emite decision:open quando a era não tem opção alguma	depois da Era 5, ou quando as duas leis da era vigente já foram adotadas, o jogo congelava num modal sem nada para escolher (achado 1 da auditoria do S8, severidade média)
+D46	A S12 é dona do resume: o S8 PAUSA ao abrir a decisão e NÃO retoma; quem devolve o loop ao jogo é a UI, ao fechar o modal	a seção 5.7 dá ao loop a autoridade da pausa e a spec da S12 já descreve o modal de decisão que pausa o tick; concentrar o par pausa/retoma em quem desenha o modal evita dois módulos disputando o mesmo estado. Até a S12 existir, a partida fica pausada após a transição de era — comportamento conhecido e documentado, não defeito
 12. Status
 Módulo	Spec	Delegado	Auditado	Integrado
 S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html (sessão #1)
@@ -234,6 +236,7 @@ v1.10	Pós-auditoria S5 (rodada 3): D37 (closure de Mods zera na troca de identi
 v1.11	Seção 8.3: o montador injeta o RUNTIME INTEGRADO vigente, não só o kernel — kernel sozinho para módulo independente, blocos integrados inteiros para módulo de dependência serial (caso do S7). Extensão de D32; nada passa a ser duplicado, a fonte segue sendo o index.html lido no envio
 v1.12	Pós-auditoria S7 (rodada 4): D39 (export e os nove targets de Mods do S7 como contrato para a S8), D40 (decisões locais ratificadas), e as emendas na extração D41 (era:ready por era, não por sessão), D42 (payload uniforme de tile:changed) e D43 (geo mantido vivo pela degradação)
 v1.13	Emenda S7 (D44): canBuild passa a recusar tile fora da fronteira quando a fronteira existe, lendo tiles.owner direto em vez de consumir o Border (vedado pela seção 4.2)
+v1.14	Emenda S8 (D45): abrirDecisao() não pausa nem abre modal sem opções; e D46 fixa a S12 como dona do resume do loop, com o S8 apenas pausando
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
