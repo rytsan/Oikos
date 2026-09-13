@@ -199,7 +199,7 @@ D36	Emenda S3 na extração: a centralização da câmera volta a valer quando o
 Módulo	Spec	Delegado	Auditado	Integrado
 S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html (sessão #1)
 S2 Worldgen	✅ v1.5	✅	✅ (código + harness 13/13 medido; D26, D29, D30)	✅ integrado no index.html (sessão #1)
-S3 Render	✅ v1.5 + adendo	✅	✅ (código + harness 9/9 +3 SKIP [browser]; parecer do auditor #2; D33, D35, D36)	☐
+S3 Render	✅ v1.5 + adendo	✅	✅ (código + harness 9/9 +3 SKIP [browser]; parecer do auditor #2; D33, D35, D36)	✅ integrado no index.html (sessão #1)
 S4 Elíptico	✅ v1.5	✅	✅ (código + harness 11/11 medido; emenda D21)	✅ integrado no index.html (sessão #1)
 S5 Mods	✅ v1.5 + adendo	✅	☐ (harness 12/12 +0 SKIP; aguarda parecer de auditor)	☐
 S6 Crônicas	✅ v1.5	✅	✅ (código + harness 9/9; emenda D22)	✅ integrado no index.html (sessão #1)
