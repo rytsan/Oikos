@@ -38,6 +38,12 @@ ganha linha na seção 13. Cabeçalho `Versão:` que não bate com a última lin
 seção 13 é achado. Se uma mudança de carta invalidou critério de aceite já
 cumprido, o módulo devia ter voltado para ☐ na seção 12 — conferir.
 
+**Declare a versão-base do seu parecer.** Abra a seção "Achados" com
+`base: v1.X`, lida do cabeçalho da carta no momento em que você auditou. Já
+houve parecer que propôs criar uma decisão que a carta vigente **já tinha**,
+porque foi escrito contra uma cópia velha. Achado sobre código se sustenta
+sozinho; achado que propõe patch na carta só vale contra a versão certa.
+
 ## 3. Estado atual
 
 | Módulo | Estado |
