@@ -70,24 +70,28 @@ Consequência de projeto, e é o ponto mais importante deste adendo:
 - `project`, `unproject`, `isZoneable`, `paintOrder` e `visibleTiles` são
   funções **puras de geometria** e não podem exigir um contexto de canvas.
   Todos os critérios de aceite sobre elas têm de rodar headless.
-- Só `draw()` precisa de canvas. Os critérios que dependem dele
-  (snapshot-diff, smoke visual < 17 ms/frame) devem ser **detectados e
-  pulados** quando não houver canvas, imprimindo `SKIP` em vez de `FAIL`, com o
-  motivo. Um `FAIL` por ausência de canvas trava a auditoria por um defeito que
-  não existe.
+- Só `draw()` precisa de canvas. Marque **`[browser]`** no título de cada
+  critério que exija canvas de fato (snapshot-diff, smoke visual < 17 ms/frame).
+  Sob Node eles imprimem **`SKIP`**, nunca `FAIL` — um `FAIL` por ausência de
+  canvas trava a auditoria por um defeito que não existe.
+- **A fronteira do SKIP é estrita** (seção 4 item 9b da carta, D31): só é
+  `[browser]` o que é declaradamente visual. Roundtrip de projeção, picking nos
+  4 cantos, `paintOrder`, `isZoneable` e culling são **PASS/FAIL obrigatórios
+  sob Node**. `SKIP` largo demais deixaria um `draw()` quebrado passar.
 - Detecte assim, sem lançar:
   `var temCanvas = typeof document !== 'undefined' && typeof document.createElement === 'function';`
   e confirme que o `getContext('2d')` devolveu contexto antes de usá-lo.
 
-**A última linha do console é contratual.** O executor do integrador procura
-exatamente este padrão para saber que a bateria terminou:
+**A última linha do console é contratual** (seção 4 item 9c da carta). O
+executor do integrador extrai exatamente este padrão:
 
 ```
-OIKOS S3 harness: 12/12 PASS
+OIKOS S3 harness: 10/10 PASS (+2 SKIP [browser])
 ```
 
-Sem essa linha, o harness expira em timeout e a devolução volta. Conte apenas
-os critérios executados; reporte os `SKIP` separadamente.
+`x/x` conta apenas os critérios EXECUTADOS; os `[browser]` pulados vão no
+`(+y SKIP [browser])`. Sem essa linha, o harness expira em timeout e a
+devolução volta. O aceite visual acontece depois, no browser, pelo dono.
 
 ## Entregáveis (todos obrigatórios)
 

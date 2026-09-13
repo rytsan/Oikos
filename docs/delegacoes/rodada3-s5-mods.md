@@ -82,14 +82,16 @@ tabela do harness usa `document`, e ele deve se limitar a
 `performance.now()` sobre pelo menos 10.000 chamadas e divida, descartando a
 primeira rodada. Uma única chamada cronometrada mede ruído, não custo.
 
-**A última linha do console é contratual.** O executor do integrador procura
-exatamente este padrão para saber que a bateria terminou:
+**A última linha do console é contratual** (seção 4 item 9c da carta). O
+executor do integrador extrai exatamente este padrão:
 
 ```
-OIKOS S5 harness: 11/11 PASS
+OIKOS S5 harness: 11/11 PASS (+0 SKIP [browser])
 ```
 
-Sem essa linha, o harness expira em timeout e a devolução volta.
+S5 não toca o DOM, então **nenhum critério seu é `[browser]`**: o contador de
+SKIP é `0` e todos os critérios são PASS/FAIL obrigatórios sob Node. Sem essa
+linha, o harness expira em timeout e a devolução volta.
 
 ## Entregáveis (todos obrigatórios)
 

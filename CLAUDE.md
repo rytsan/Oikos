@@ -11,7 +11,7 @@ grep -n "Math.random" — só ocorrências em COMENTÁRIOS são aceitas.
 grep -nE "document\.|querySelector|getElementById|createElement" — só noharness (e em S3/S12 quando existirem). Dentro de bloco de módulo = rejeição.
 Marcadores /* ===== OIKOS S{n} {NOME} — INÍCIO/FIM ===== */ são imutáveis:nunca reformatar, renomear, ou mover código para fora deles.
 Proibida inferência silenciosa. O que faltar: // LACUNA: no código +pergunta ao dono (Template A). Decisão local só a mais simples, // DECISÃO:.
-A carta só muda pelo dono. Você PROPÕE patches; nunca os aplica sozinho.Alteração aceita segue a seção 14 da carta: +0,1 na versão por lote aceito,cabeçalho e seção 13 no mesmo commit, sem código junto.
+A carta só muda pelo dono. Você PROPÕE patches; nunca os aplica sozinho.Alteração aceita segue a seção 14 da carta: +0,1 na versão por lote aceito,cabeçalho e seção 13 no mesmo commit, sem código junto.Patches vindos do canal de decisão devem declarar a versão-base da carta("base: v1.X"). O executor verifica a versão vigente ANTES de aplicar:divergência → PARE. Numeração de D em conflito dentro de um patch aprovadopode ser renumerada pelo executor para os próximos slots livres, desde que oCONTEÚDO permaneça idêntico e a renumeração conste no relatório (o PARE protegeconteúdo, não sequência numérica).
 4. Emendas
 Devoluções em docs/devolucoes/ são históricos intocáveis. Emendas aprovadaspelo dono (ex.: D21, D22) são aplicadas AO EXTRAIR os blocos para o index.html,marcadas no código com // EMENDA v{versão vigente da carta} D{n}:, com diffregistrado no relatório (Template B). A cópia emendada vai para docs/devolucoes/emendadas/.
 
