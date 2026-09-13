@@ -128,6 +128,11 @@ RODADA {n} — {S#}
 
 Patch é **proposta com diff pronto**, nunca aplicado por você.
 
+O relatório também é **gravado** em `docs/auditorias/S{n}.md`, na seção "Achados
+— auditor {quem}, {data}" (Template C, seção 11 do `CLAUDE.md`). Escreva a sua
+seção **sem ler a do outro auditor**; a comparação vem depois, na seção 4 do
+mesmo arquivo. É esse arquivo que sobrevive à sessão — chat não.
+
 ## 8. Decisões já ratificadas — não reabrir
 
 A seção 11 da carta é append-only e tem o registro completo (D1–D30). As que
