@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>OIKOS S6 — Crônicas · harness de aceite</title>
+<style>
+  body{font:13px/1.45 ui-monospace,Consolas,monospace;background:#14171c;color:#dfe4ea;margin:24px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;margin-top:8px;max-width:1400px}
+  td,th{border:1px solid #39414d;padding:4px 10px;text-align:left;vertical-align:top}
+  th{background:#1e242c}
+  .pass{color:#4ade80;font-weight:bold}
+  .fail{color:#f87171;font-weight:bold}
+  #resumo{margin-top:14px;font-size:14px}
+  .det{color:#8b95a5}
+</style>
+</head>
+<body>
+<h1>OIKOS S6 — Crônicas · harness de aceite</h1>
+<div id="saida">executando…</div>
+<div id="resumo"></div>
+<script>
+/* ===== OIKOS S1 KERNEL — INÍCIO ===== */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Constantes canônicas (CONTRATO entre os 13 módulos). Objeto mutável de
+  // propósito: o integrador/harness pode sobrescrever TICK_MS ou SAVE_KEY
+  // antes de start() e o loop lê os valores a cada uso (regra 5.8).
+  // ---------------------------------------------------------------------
+  var consts = {
+    TILE_W: 64, TILE_H: 32,
+    MAP: 56,
+    TICK_MS: 2000,
+    MAX_TICKS_PER_FRAME: 5,
+    ZOOM_MIN: 0.5, ZOOM_MAX: 2.5,
+    SAVE_KEY: 'oikos_v1',
+    SCHEMA_VERSION: 1
+  };
+
+  // ---------------------------------------------------------------------
+  // RNG determinístico — mulberry32 + derivação por hash xmur3.
+  // NENHUM Math.random em todo o kernel.
+  // ---------------------------------------------------------------------
+  function xmur3(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // makeRng(seed) -> { seed, f(), i(n), pick(arr), child(label) }
+  // DECISÃO: makeRng é exportado — a spec o descreve mas não o lista nas
+  // chaves; os módulos precisam dele para criar streams locais.
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    var next = mulberry32(s);                  // estado interno privado
+    return {
+      seed: s,
+      f: function () { return next(); },
+      i: function (n) { return Math.floor(next() * n); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      // child() deriva da SEED DE CONSTRUÇÃO, nunca do estado corrente: por
+      // isso não consome draws do pai e é estável em qualquer momento.
+      child: function (label) {
+        var h = xmur3(String(label))();
+        return makeRng((s ^ h) >>> 0);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Estado central — schema v1 travado (seção 3 da spec).
+  // ---------------------------------------------------------------------
+  function makeState(seed) {
+    var N = consts.MAP * consts.MAP;
+    return {
+      schemaVersion: consts.SCHEMA_VERSION,
+      seed: seed >>> 0,
+      year: 0, era: 0, paused: false,
+      meters: { knowledge: 0, legitimacy: 50, harmonyAxis: 0 },
+      res: { food: 0, wood: 0, stone: 0, copper: 0, iron: 0, coal: 0, gold: 0 },
+      tiles: {
+        terrain: new Uint8Array(N),
+        resource: new Uint8Array(N),
+        building: new Uint8Array(N),
+        level: new Uint8Array(N),
+        owner: new Uint8Array(N),
+        pollution: new Float32Array(N)
+      },
+      geo: {},
+      pendulums: {
+        main: { u: 0, k: 0.1 }, harvest: { u: 0, k: 0.1 }, economy: { u: 0, k: 0.1 }
+      },
+      institutions: [],
+      chronicle: [],
+      clock: { stagnation: 0, decayStage: 0 },
+      camera: { x: 0, y: 0, zoom: 1 },
+      tool: null, hover: null,
+      sim: { pop: 0, jobs: 0, foodProd: 0, housing: 0, tension: 0 }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Barramento de eventos — pub/sub SÍNCRONO, FIFO por ordem de registro.
+  // Os nomes do dicionário (seção 5) não precisam de declaração prévia: o
+  // bus aceita qualquer string. O kernel só emite 'sim:tick'.
+  // ---------------------------------------------------------------------
+  var handlers = Object.create(null);
+  var bus = {
+    on: function (evt, fn) {
+      var arr = handlers[evt] || (handlers[evt] = []);
+      arr.push(fn);
+      return function off() { var i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+    },
+    emit: function (evt, payload) {
+      var arr = handlers[evt];
+      if (!arr || !arr.length) return;
+      // DECISÃO: itera sobre cópia — on/off durante o emit não corrompe a volta.
+      var snap = arr.slice();
+      for (var i = 0; i < snap.length; i++) {
+        try { snap[i](payload); }
+        catch (e) { console.error('[OIKOS bus] handler de "' + evt + '" lancou:', e); }
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Registro de módulos (regra 5.9).
+  // ---------------------------------------------------------------------
+  var modules = [];
+  var started = false;
+
+  function initModule(m) {
+    if (m.ready) return;
+    m.ready = true;
+    if (!m.init) return;
+    try { m.init(); }
+    catch (e) { console.error('[OIKOS] init("' + m.name + '") lancou:', e); }
+  }
+
+  function use(name, hooks) {
+    hooks = hooks || {};
+    var m = { name: name, init: hooks.init, update: hooks.update, draw: hooks.draw, ready: false };
+    modules.push(m);
+    if (started) initModule(m);                // use() após start(): init imediato
+  }
+
+  // ---------------------------------------------------------------------
+  // Loop — rAF + tick fixo por acumulador.
+  // ---------------------------------------------------------------------
+  var rafId = 0, lastNow = 0, acc = 0;
+
+  function tick() {
+    loop.tickCount++;
+    global.OIKOS.state.year++;                 // year++ ANTES do emit (regra 5.9)
+    // DECISÃO: ordem do tick = year++ · update dos módulos · emit('sim:tick').
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.update) continue;
+      try { m.update(); }
+      catch (e) { console.error('[OIKOS] update("' + m.name + '") lancou:', e); }
+    }
+    bus.emit('sim:tick', { year: global.OIKOS.state.year });
+  }
+
+  function step(now) {
+    rafId = global.requestAnimationFrame(step);
+    var dt = now - lastNow; lastNow = now;
+    loop.frame++;
+
+    if (!global.OIKOS.state.paused) {
+      acc += dt;
+      var TICK = consts.TICK_MS;               // leitura viva (regra 5.8)
+      var cap = consts.MAX_TICKS_PER_FRAME, n = 0;
+      while (acc >= TICK && n < cap) { acc -= TICK; n++; tick(); }
+      if (n >= cap) acc = 0;                   // teto atingido: descarta a dívida
+    } else {
+      acc = 0;                                 // pausa não acumula dívida
+    }
+
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.draw) continue;
+      try { m.draw(dt); }
+      catch (e) { console.error('[OIKOS] draw("' + m.name + '") lancou:', e); }
+    }
+  }
+
+  var loop = {
+    frame: 0,
+    tickCount: 0,
+    start: function () {
+      if (started) return;                     // DECISÃO: start() idempotente
+      started = true;
+      for (var i = 0; i < modules.length; i++) initModule(modules[i]);
+      lastNow = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+      acc = 0;
+      rafId = global.requestAnimationFrame(step);
+    },
+    // Regra 5.7: pause/resume são os ÚNICOS mutadores de state.paused.
+    pause: function () { global.OIKOS.state.paused = true; },
+    resume: function () { global.OIKOS.state.paused = false; acc = 0; },
+    isPaused: function () { return global.OIKOS.state.paused === true; }
+  };
+
+  // ---------------------------------------------------------------------
+  // Persistência — serializador recursivo ciente de TypedArrays.
+  // ---------------------------------------------------------------------
+  var TA = {
+    Int8Array: Int8Array, Uint8Array: Uint8Array, Uint8ClampedArray: Uint8ClampedArray,
+    Int16Array: Int16Array, Uint16Array: Uint16Array,
+    Int32Array: Int32Array, Uint32Array: Uint32Array,
+    Float32Array: Float32Array, Float64Array: Float64Array
+  };
+
+  function enc(v) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      return { __ta: v.constructor.name, v: Array.prototype.slice.call(v) };
+    }
+    if (Array.isArray(v)) return v.map(enc);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = enc(v[k]);
+      return o;
+    }
+    return v;
+  }
+  function dec(v) {
+    if (v && typeof v === 'object' && typeof v.__ta === 'string' && Array.isArray(v.v)) {
+      var C = TA[v.__ta];
+      if (!C) throw new Error('TypedArray desconhecido: ' + v.__ta);
+      return C.from(v.v);
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = dec(v[k]);
+      return o;
+    }
+    return v;
+  }
+
+  function serialize(state) { return JSON.stringify(enc(state)); }
+
+  function deserialize(json) {
+    try {
+      var raw = JSON.parse(json);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.schemaVersion !== consts.SCHEMA_VERSION) return null;   // versão incompatível
+      return dec(raw);
+    } catch (e) { return null; }
+  }
+
+  // LACUNA: a spec exige localStorage, mas alguns navegadores o negam em
+  // file://. Fallback em memória mantém save/load funcionais sem lançar.
+  var memStore = Object.create(null);
+  function store() {
+    try {
+      if (global.localStorage) { global.localStorage.getItem(consts.SAVE_KEY); return global.localStorage; }
+    } catch (e) { /* bloqueado pelo navegador */ }
+    return {
+      getItem: function (k) { return (k in memStore) ? memStore[k] : null; },
+      setItem: function (k, v) { memStore[k] = String(v); }
+    };
+  }
+
+  function save() {
+    try { store().setItem(consts.SAVE_KEY, serialize(global.OIKOS.state)); }
+    catch (e) { console.error('[OIKOS] save falhou:', e); }
+  }
+
+  function load() {
+    var json;
+    try { json = store().getItem(consts.SAVE_KEY); }
+    catch (e) { return false; }
+    if (!json) return false;
+    var st = deserialize(json);
+    if (!st) return false;                       // estado vigente permanece intocado
+    global.OIKOS.state = st;
+    global.OIKOS.rng = makeRng(st.seed);         // regra 5.6: rng recriado da seed
+    acc = 0;
+    loop.pause();                                // regra 5.7: retoma PAUSADO
+    return true;
+  }
+
+  // Regra 5.6: o rng NÃO é serializado. Após load(), os draws do stream
+  // principal recomeçam da seed; o determinismo ESTRUTURAL se preserva
+  // porque cada módulo usa rng.child('<label>'), derivado só da seed.
+  // LACUNA: seed inicial de boot não especificada — constante fixa
+  // (Math.random é proibido).
+  var DEFAULT_SEED = 1337;
+
+  function reset(newSeed) {
+    // LACUNA: reset() sem argumento não foi especificado — reutiliza a seed atual.
+    var s = (newSeed === undefined || newSeed === null)
+      ? (global.OIKOS.state ? global.OIKOS.state.seed : DEFAULT_SEED)
+      : newSeed;
+    global.OIKOS.state = makeState(s);
+    global.OIKOS.rng = makeRng(s);
+    acc = 0;
+  }
+
+  global.OIKOS = {
+    consts: consts,
+    makeRng: makeRng,
+    rng: makeRng(DEFAULT_SEED),
+    state: makeState(DEFAULT_SEED),
+    makeState: makeState,
+    bus: bus,
+    use: use,
+    loop: loop,
+    save: save,
+    load: load,
+    reset: reset,
+    serialize: serialize,
+    deserialize: deserialize
+  };
+})(window);
+/* ===== OIKOS S1 KERNEL — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S6 CHRONICLES — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var TYPES = { ato: 1, evento: 1, consequencia: 1, desastre: 1, marco: 1 };
+
+  var counter = 0;        // sufixo do último id emitido
+  var lastState = null;   // identidade do estado em que o contador foi calculado
+  var probes = [];        // SONDAS VOLÁTEIS: nunca entram no save
+
+  // sync() — o kernel REATRIBUI state em reset()/load(). Comparar a identidade
+  // do objeto é o gatilho barato e suficiente para reidratar o contador a partir
+  // do maior id presente na crônica restaurada.
+  function sync() {
+    if (O.state === lastState) return;
+    lastState = O.state;
+    var ch = O.state.chronicle || [], max = 0;
+    for (var i = 0; i < ch.length; i++) {
+      var m = ch[i] && typeof ch[i].id === 'string' ? /^c(\d+)$/.exec(ch[i].id) : null;
+      if (m) { var n = +m[1]; if (n > max) max = n; }
+    }
+    counter = max;
+  }
+
+  // log(entry) — preenche id/year/era; NUNCA lança: entrada inválida vira
+  // console.error + null.
+  // D25: valida APENAS type. titulo/prosa/ato/efeitoMedido/refs são do schema
+  // (D23) mas seu conteúdo é responsabilidade do chamador — o módulo não limpa
+  // culpa de quem chama.
+  function log(entry) {
+    sync();
+    if (!entry || typeof entry !== 'object' || !TYPES[entry.type]) {
+      console.error('[OIKOS Chron] entrada inválida (type ausente ou fora do vocabulário):', entry);
+      return null;
+    }
+    var e = {};
+    for (var k in entry) if (Object.prototype.hasOwnProperty.call(entry, k)) e[k] = entry[k];
+    if (e.refs !== undefined && !Array.isArray(e.refs)) e.refs = [e.refs];
+    e.id = 'c' + (++counter);
+    e.year = O.state.year;
+    e.era = O.state.era;
+    O.state.chronicle.push(e);
+    O.bus.emit('chron:entry', e);
+    return e;
+  }
+
+  function idNum(e) {
+    var m = e && typeof e.id === 'string' ? /^c(\d+)$/.exec(e.id) : null;
+    return m ? +m[1] : Infinity;
+  }
+
+  // query({era, type, source}) — filtros combináveis; ausentes não restringem.
+  // D22/D23: "source casa por refs OU ato" = a entrada casa se cita source em
+  // refs, se aponta para ele no campo ato, ou se ela PRÓPRIA é o ato de origem
+  // (type 'ato' com id === source). O campo 'source' não pertence ao schema.
+  function query(f) {
+    sync();
+    f = f || {};
+    var ch = O.state.chronicle || [];
+    var out = [];
+    for (var i = 0; i < ch.length; i++) {
+      var e = ch[i];
+      if (!e) continue;
+      if (f.era !== undefined && e.era !== f.era) continue;
+      if (f.type !== undefined && e.type !== f.type) continue;
+      if (f.source !== undefined) {
+        var porRefs = Array.isArray(e.refs) && e.refs.indexOf(f.source) >= 0;
+        var porVinculo = e.ato !== undefined && e.ato === f.source;
+        var ehOAto = e.type === 'ato' && e.id === f.source;
+        if (!porRefs && !porVinculo && !ehOAto) continue;
+      }
+      out.push(e);
+    }
+    return out;
+  }
+
+  // timeline() — cópia ordenada por ano e, no empate, por ordem de emissão.
+  // Ordenação total e estável: dois ids nunca colidem.
+  function timeline() {
+    sync();
+    return (O.state.chronicle || []).slice().sort(function (a, b) {
+      return (a.year - b.year) || (idNum(a) - idNum(b));
+    });
+  }
+
+  // probe({source, every, fn}) — sonda periódica. fn(year, state) devolvendo
+  // não-nulo gera uma 'consequencia' com refs:[source] E ato:source (D22).
+  // VOLÁTIL por contrato: o módulo dono re-registra a sonda após load().
+  function probe(cfg) {
+    sync();
+    if (!cfg || typeof cfg.fn !== 'function') {
+      console.error('[OIKOS Chron] sonda inválida (fn ausente):', cfg);
+      return null;
+    }
+    var every = Math.floor(Number(cfg.every));
+    if (!isFinite(every) || every < 1) every = 1;
+    var p = { source: cfg.source, every: every, fn: cfg.fn, born: O.state.year, dead: false };
+    probes.push(p);
+    return {
+      cancel: function () {
+        p.dead = true;
+        var i = probes.indexOf(p);
+        if (i >= 0) probes.splice(i, 1);
+      }
+    };
+  }
+
+  // Escuta de ticks EXCLUSIVAMENTE pelo bus (D13): update() PRODUZ o ano,
+  // o handler de sim:tick CONSOME o ano já consolidado. Nenhum OIKOS.use aqui.
+  O.bus.on('sim:tick', function (ev) {
+    sync();
+    var year = (ev && typeof ev.year === 'number') ? ev.year : O.state.year;
+    var snap = probes.slice();                 // sonda criada/cancelada durante o
+    for (var i = 0; i < snap.length; i++) {    // disparo não corrompe a iteração
+      var p = snap[i];
+      if (p.dead) continue;
+      if (((year - p.born) % p.every) !== 0) continue;
+      var out;
+      try { out = p.fn(year, O.state); }
+      catch (err) { console.error('[OIKOS Chron] sonda de "' + p.source + '" lancou:', err); continue; }
+      if (out === null || out === undefined) continue;
+      var entry = (typeof out === 'object') ? out : { titulo: String(out) };
+      entry.type = 'consequencia';             // tipo, refs e ato são do contrato
+      entry.refs = [p.source];
+      entry.ato = p.source;                    // D22: vínculo ato -> consequencia
+      log(entry);                              //      lido pelo epílogo (S11)
+    }
+  });
+
+  O.Chron = { log: log, query: query, timeline: timeline, probe: probe };
+})(window);
+/* ===== OIKOS S6 CHRONICLES — FIM ===== */
+</script>
+<script>
+/* ================== HARNESS S6 — critérios de aceite ================== */
+(function () {
+  'use strict';
+  var O = window.OIKOS, C = O.Chron, res = [];
+  function t(id, nome, ok, det) { res.push({ id: id, nome: nome, ok: !!ok, det: det || '' }); }
+
+  // 1. log válido preenche id/year/era, grava e emite chron:entry
+  (function () {
+    O.reset(1);
+    O.state.year = 7; O.state.era = 2;
+    var vistos = [];
+    var off = O.bus.on('chron:entry', function (e) { vistos.push(e.id); });
+    var e = C.log({ type: 'ato', titulo: 'A Casa recebe seus primeiros fogos.' });
+    off();
+    var ok = e && e.id === 'c1' && e.year === 7 && e.era === 2 &&
+      O.state.chronicle.length === 1 && O.state.chronicle[0] === e &&
+      vistos.length === 1 && vistos[0] === 'c1';
+    t(1, 'log(): preenche id/year/era, grava em state.chronicle e emite chron:entry',
+      ok, e ? 'id=' + e.id + ' year=' + e.year + ' era=' + e.era + ' emits=' + vistos.length : 'null');
+  })();
+
+  // 2. Entrada inválida: console.error + null, sem lançar e sem gravar
+  (function () {
+    O.reset(1);
+    var lancou = false, ret = [];
+    var erros = 0, orig = console.error;
+    console.error = function () { erros++; };
+    try {
+      ret.push(C.log({ type: 'fofoca', titulo: 'x' }));
+      ret.push(C.log({ titulo: 'sem tipo' }));
+      ret.push(C.log(null));
+      ret.push(C.log('string solta'));
+    } catch (e) { lancou = true; } finally { console.error = orig; }
+    var todosNull = ret.every(function (r) { return r === null; });
+    t(2, 'log() inválido: retorna null, registra console.error, não lança e não grava',
+      !lancou && todosNull && O.state.chronicle.length === 0 && erros === 4,
+      'nulls=' + todosNull + ' chronicle=' + O.state.chronicle.length + ' console.error=' + erros);
+  })();
+
+  // 3. Ids sequenciais sem reuso após load()
+  (function () {
+    O.reset(3);
+    for (var i = 0; i < 5; i++) { O.state.year = i; C.log({ type: 'evento', titulo: 'e' + i }); }
+    O.save();                                     // save com c1..c5
+    C.log({ type: 'evento', titulo: 'pós-save' });  // c6, fora do save
+    var okLoad = O.load();
+    var depois = C.log({ type: 'marco', titulo: 'após load' });
+    var ids = O.state.chronicle.map(function (e) { return e.id; });
+    var unicos = (new Set(ids)).size === ids.length;
+    var maiorRestaurado = 5;
+    var semReuso = depois && +depois.id.slice(1) > maiorRestaurado;
+    t(3, 'Ids monotônicos reidratados do maior id após load(), sem reuso nem colisão',
+      okLoad && semReuso && unicos && depois.id === 'c6',
+      'restaurados=[' + ids.slice(0, 5).join(',') + '] próximo=' + (depois && depois.id) + ' únicos=' + unicos);
+  })();
+
+  // 4. timeline() ordenada e estável
+  (function () {
+    O.reset(4);
+    var anos = [5, 1, 9, 1, 3, 1];
+    for (var i = 0; i < anos.length; i++) { O.state.year = anos[i]; C.log({ type: 'evento', titulo: 'e' + i }); }
+    var tl = C.timeline();
+    var ordenada = true;
+    for (var j = 1; j < tl.length; j++) {
+      if (tl[j].year < tl[j - 1].year) ordenada = false;
+      if (tl[j].year === tl[j - 1].year && +tl[j].id.slice(1) < +tl[j - 1].id.slice(1)) ordenada = false;
+    }
+    var empate = tl.filter(function (e) { return e.year === 1; }).map(function (e) { return e.id; }).join(',');
+    var naoMuta = O.state.chronicle[0].year === 5;    // timeline devolve cópia
+    var estavel = C.timeline().map(function (e) { return e.id; }).join(',') ===
+      tl.map(function (e) { return e.id; }).join(',');
+    t(4, 'timeline(): ordem por ano, empate pela ordem de emissão, cópia estável',
+      ordenada && estavel && naoMuta && empate === 'c2,c4,c6',
+      'empate ano 1 = [' + empate + '] estável=' + estavel + ' cópia=' + naoMuta);
+  })();
+
+  // 5. query por era, type e source (refs OU ato)
+  (function () {
+    O.reset(5);
+    O.state.era = 0;
+    // vocabulário D23: titulo / prosa / ato / efeitoMedido / refs
+    var ato = C.log({ type: 'ato', titulo: 'Chefia aloca a terra', prosa: 'A Casa entrega o chão a quem decide.' });
+    C.log({ type: 'evento', titulo: 'ruído' });
+    O.state.era = 1;
+    C.log({ type: 'consequencia', titulo: 'zoneamento fora de controle', ato: ato.id, refs: [ato.id] });
+    C.log({ type: 'consequencia', titulo: 'outra causa', ato: 'c99', refs: ['c99'] });
+    C.log({ type: 'consequencia', titulo: 'só vínculo, sem refs', ato: ato.id });
+    var porEra = C.query({ era: 1 }).length === 3;
+    var porTipo = C.query({ type: 'consequencia' }).length === 3;
+    var daFonte = C.query({ source: ato.id });               // o próprio ato + as 2 ligadas
+    var soVinculo = daFonte.some(function (e) { return e.titulo === 'só vínculo, sem refs'; });
+    var outraFonte = C.query({ source: 'c99' }).length === 1;
+    var combinado = C.query({ era: 1, type: 'consequencia', source: ato.id }).length === 2;
+    t(5, 'query(): filtra por era, type e source (casando por refs, pelo campo ato, ou pelo próprio ato)',
+      porEra && porTipo && daFonte.length === 3 && soVinculo && outraFonte && combinado,
+      'era=' + porEra + ' type=' + porTipo + ' daFonte=' + daFonte.length +
+      ' vínculoSemRefs=' + soVinculo + ' combinado=' + combinado);
+  })();
+
+  // 6. Sonda dispara nos anos certos e cancel() interrompe
+  (function () {
+    O.reset(6);
+    O.state.year = 10;
+    var anos = [];
+    var h = C.probe({
+      source: 'inst.corveia', every: 3,
+      fn: function (year) { anos.push(year); return { titulo: 'a corveia cobra seu preço em ' + year }; }
+    });
+    for (var y = 11; y <= 22; y++) { O.state.year = y; O.bus.emit('sim:tick', { year: y }); }
+    h.cancel();
+    for (y = 23; y <= 30; y++) { O.state.year = y; O.bus.emit('sim:tick', { year: y }); }
+    var esperado = [13, 16, 19, 22].join(',');
+    var geradas = C.query({ source: 'inst.corveia' });
+    var tipoOk = geradas.every(function (e) {
+      return e.type === 'consequencia' && e.refs[0] === 'inst.corveia' && e.ato === 'inst.corveia';
+    });
+    t(6, 'probe(): dispara em (ano − registro) % every === 0, gera consequencia com refs E ato (D22), cancel() interrompe',
+      anos.join(',') === esperado && geradas.length === 4 && tipoOk,
+      'anos=[' + anos.join(',') + '] esperado=[' + esperado + '] entradas=' + geradas.length +
+      ' · refs+ato preenchidos=' + tipoOk);
+  })();
+
+  // 7. Roundtrip preserva chronicle; sondas não serializam
+  (function () {
+    O.reset(7);
+    C.log({
+      type: 'marco', titulo: 'Círculo dos Antepassados',
+      prosa: 'A Casa guarda os nomes de quem veio antes.', refs: ['c0']
+    });
+    C.log({
+      type: 'desastre', titulo: 'A seca morde o celeiro',
+      prosa: 'A Casa responde ao que lhe foi tomado.', efeitoMedido: { food: -37 }
+    });
+    var antes = JSON.stringify(O.state.chronicle);
+    var disparou = 0;
+    C.probe({ source: 's', every: 1, fn: function () { disparou++; return null; } });
+    O.save();
+    var json = O.serialize(O.state);
+    var semSondas = json.indexOf('"probes"') < 0 && json.indexOf('function') < 0;
+    O.reset(999);                                   // destrói tudo
+    var okLoad = O.load();
+    var depois = JSON.stringify(O.state.chronicle);
+    t(7, 'Roundtrip: chronicle sobrevive a save/load; sondas são voláteis e não serializam',
+      okLoad && antes === depois && semSondas && O.state.chronicle.length === 2,
+      'iguais=' + (antes === depois) + ' entradas=' + O.state.chronicle.length + ' semSondas=' + semSondas);
+  })();
+
+  // 8. Performance: 200 entradas + 10 sondas, custo de um tick
+  (function () {
+    O.reset(8);
+    for (var i = 0; i < 200; i++) { O.state.year = i; C.log({ type: 'evento', titulo: 'ruído ' + i }); }
+    for (var s = 0; s < 10; s++) {
+      C.probe({ source: 'p' + s, every: 1, fn: function (y) { return { titulo: 'sonda em ' + y }; } });
+    }
+    O.state.year = 500;
+    O.bus.emit('sim:tick', { year: 500 });          // aquece
+    var t0 = performance.now();
+    O.state.year = 501;
+    O.bus.emit('sim:tick', { year: 501 });
+    var ms = performance.now() - t0;
+    t(8, 'Performance: 200 entradas + 10 sondas, um tick abaixo de 2 ms',
+      ms < 2 && O.state.chronicle.length === 220, ms.toFixed(3) + ' ms · entradas=' + O.state.chronicle.length);
+  })();
+
+  // 9. Escuta só pelo bus: nenhum hook de módulo registrado
+  (function () {
+    O.reset(9);
+    var updates = 0;
+    O.use('testemunhaDeUpdate', { update: function () { updates++; } });
+    C.probe({ source: 'avulsa', every: 1, fn: function (y) { return { titulo: 'ouvido em ' + y }; } });
+    O.state.year = 1;
+    O.bus.emit('sim:tick', { year: 1 });           // emit avulso, sem loop rodando
+    var reagiu = C.query({ source: 'avulsa' }).length === 1;
+    t(9, 'Crônicas reagem a sim:tick pelo bus mesmo sem loop, e nunca por update() (D13)',
+      reagiu && updates === 0,
+      'sonda disparou pelo bus=' + reagiu + ' · update() de testemunha executou ' + updates + ' vez(es)');
+  })();
+
+  render(res, 'saida', 'resumo', 'OIKOS S6');
+  function render(lista, elTab, elRes, tag) {
+    lista.sort(function (a, b) { return a.id - b.id; });
+    document.getElementById(elTab).innerHTML =
+      '<table><tr><th>#</th><th>Critério</th><th>Status</th><th>Detalhe</th></tr>' +
+      lista.map(function (r) {
+        return '<tr><td>' + r.id + '</td><td>' + r.nome + '</td><td class="' + (r.ok ? 'pass' : 'fail') +
+          '">' + (r.ok ? 'PASS' : 'FAIL') + '</td><td class="det">' + r.det + '</td></tr>';
+      }).join('') + '</table>';
+    var pass = lista.filter(function (r) { return r.ok; }).length;
+    document.getElementById(elRes).innerHTML =
+      '<b class="' + (pass === lista.length ? 'pass' : 'fail') + '">' + pass + '/' + lista.length + ' PASS</b>';
+    console.table(lista.map(function (r) {
+      return { '#': r.id, criterio: r.nome, status: r.ok ? 'PASS' : 'FAIL', detalhe: r.det };
+    }));
+    console.log(tag + ' harness: ' + pass + '/' + lista.length + ' PASS');
+  }
+})();
+</script>
+</body>
+</html>

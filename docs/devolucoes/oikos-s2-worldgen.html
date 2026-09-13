@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>OIKOS S2 — Worldgen · harness de aceite</title>
+<style>
+  body{font:13px/1.45 ui-monospace,Consolas,monospace;background:#14171c;color:#dfe4ea;margin:24px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;margin-top:8px;max-width:1400px}
+  td,th{border:1px solid #39414d;padding:4px 10px;text-align:left;vertical-align:top}
+  th{background:#1e242c}
+  .pass{color:#4ade80;font-weight:bold}
+  .fail{color:#f87171;font-weight:bold}
+  #resumo{margin-top:14px;font-size:14px}
+  .det{color:#8b95a5}
+</style>
+</head>
+<body>
+<h1>OIKOS S2 — Worldgen · harness de aceite</h1>
+<div id="saida">executando…</div>
+<div id="resumo"></div>
+<script>
+/* ===== OIKOS S1 KERNEL — INÍCIO ===== */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Constantes canônicas (CONTRATO entre os 13 módulos). Objeto mutável de
+  // propósito: o integrador/harness pode sobrescrever TICK_MS ou SAVE_KEY
+  // antes de start() e o loop lê os valores a cada uso (regra 5.8).
+  // ---------------------------------------------------------------------
+  var consts = {
+    TILE_W: 64, TILE_H: 32,
+    MAP: 56,
+    TICK_MS: 2000,
+    MAX_TICKS_PER_FRAME: 5,
+    ZOOM_MIN: 0.5, ZOOM_MAX: 2.5,
+    SAVE_KEY: 'oikos_v1',
+    SCHEMA_VERSION: 1
+  };
+
+  // ---------------------------------------------------------------------
+  // RNG determinístico — mulberry32 + derivação por hash xmur3.
+  // NENHUM Math.random em todo o kernel.
+  // ---------------------------------------------------------------------
+  function xmur3(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // makeRng(seed) -> { seed, f(), i(n), pick(arr), child(label) }
+  // DECISÃO: makeRng é exportado — a spec o descreve mas não o lista nas
+  // chaves; os módulos precisam dele para criar streams locais.
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    var next = mulberry32(s);                  // estado interno privado
+    return {
+      seed: s,
+      f: function () { return next(); },
+      i: function (n) { return Math.floor(next() * n); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      // child() deriva da SEED DE CONSTRUÇÃO, nunca do estado corrente: por
+      // isso não consome draws do pai e é estável em qualquer momento.
+      child: function (label) {
+        var h = xmur3(String(label))();
+        return makeRng((s ^ h) >>> 0);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Estado central — schema v1 travado (seção 3 da spec).
+  // ---------------------------------------------------------------------
+  function makeState(seed) {
+    var N = consts.MAP * consts.MAP;
+    return {
+      schemaVersion: consts.SCHEMA_VERSION,
+      seed: seed >>> 0,
+      year: 0, era: 0, paused: false,
+      meters: { knowledge: 0, legitimacy: 50, harmonyAxis: 0 },
+      res: { food: 0, wood: 0, stone: 0, copper: 0, iron: 0, coal: 0, gold: 0 },
+      tiles: {
+        terrain: new Uint8Array(N),
+        resource: new Uint8Array(N),
+        building: new Uint8Array(N),
+        level: new Uint8Array(N),
+        owner: new Uint8Array(N),
+        pollution: new Float32Array(N)
+      },
+      geo: {},
+      pendulums: {
+        main: { u: 0, k: 0.1 }, harvest: { u: 0, k: 0.1 }, economy: { u: 0, k: 0.1 }
+      },
+      institutions: [],
+      chronicle: [],
+      clock: { stagnation: 0, decayStage: 0 },
+      camera: { x: 0, y: 0, zoom: 1 },
+      tool: null, hover: null,
+      sim: { pop: 0, jobs: 0, foodProd: 0, housing: 0, tension: 0 }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Barramento de eventos — pub/sub SÍNCRONO, FIFO por ordem de registro.
+  // Os nomes do dicionário (seção 5) não precisam de declaração prévia: o
+  // bus aceita qualquer string. O kernel só emite 'sim:tick'.
+  // ---------------------------------------------------------------------
+  var handlers = Object.create(null);
+  var bus = {
+    on: function (evt, fn) {
+      var arr = handlers[evt] || (handlers[evt] = []);
+      arr.push(fn);
+      return function off() { var i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+    },
+    emit: function (evt, payload) {
+      var arr = handlers[evt];
+      if (!arr || !arr.length) return;
+      // DECISÃO: itera sobre cópia — on/off durante o emit não corrompe a volta.
+      var snap = arr.slice();
+      for (var i = 0; i < snap.length; i++) {
+        try { snap[i](payload); }
+        catch (e) { console.error('[OIKOS bus] handler de "' + evt + '" lancou:', e); }
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Registro de módulos (regra 5.9).
+  // ---------------------------------------------------------------------
+  var modules = [];
+  var started = false;
+
+  function initModule(m) {
+    if (m.ready) return;
+    m.ready = true;
+    if (!m.init) return;
+    try { m.init(); }
+    catch (e) { console.error('[OIKOS] init("' + m.name + '") lancou:', e); }
+  }
+
+  function use(name, hooks) {
+    hooks = hooks || {};
+    var m = { name: name, init: hooks.init, update: hooks.update, draw: hooks.draw, ready: false };
+    modules.push(m);
+    if (started) initModule(m);                // use() após start(): init imediato
+  }
+
+  // ---------------------------------------------------------------------
+  // Loop — rAF + tick fixo por acumulador.
+  // ---------------------------------------------------------------------
+  var rafId = 0, lastNow = 0, acc = 0;
+
+  function tick() {
+    loop.tickCount++;
+    global.OIKOS.state.year++;                 // year++ ANTES do emit (regra 5.9)
+    // DECISÃO: ordem do tick = year++ · update dos módulos · emit('sim:tick').
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.update) continue;
+      try { m.update(); }
+      catch (e) { console.error('[OIKOS] update("' + m.name + '") lancou:', e); }
+    }
+    bus.emit('sim:tick', { year: global.OIKOS.state.year });
+  }
+
+  function step(now) {
+    rafId = global.requestAnimationFrame(step);
+    var dt = now - lastNow; lastNow = now;
+    loop.frame++;
+
+    if (!global.OIKOS.state.paused) {
+      acc += dt;
+      var TICK = consts.TICK_MS;               // leitura viva (regra 5.8)
+      var cap = consts.MAX_TICKS_PER_FRAME, n = 0;
+      while (acc >= TICK && n < cap) { acc -= TICK; n++; tick(); }
+      if (n >= cap) acc = 0;                   // teto atingido: descarta a dívida
+    } else {
+      acc = 0;                                 // pausa não acumula dívida
+    }
+
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.draw) continue;
+      try { m.draw(dt); }
+      catch (e) { console.error('[OIKOS] draw("' + m.name + '") lancou:', e); }
+    }
+  }
+
+  var loop = {
+    frame: 0,
+    tickCount: 0,
+    start: function () {
+      if (started) return;                     // DECISÃO: start() idempotente
+      started = true;
+      for (var i = 0; i < modules.length; i++) initModule(modules[i]);
+      lastNow = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+      acc = 0;
+      rafId = global.requestAnimationFrame(step);
+    },
+    // Regra 5.7: pause/resume são os ÚNICOS mutadores de state.paused.
+    pause: function () { global.OIKOS.state.paused = true; },
+    resume: function () { global.OIKOS.state.paused = false; acc = 0; },
+    isPaused: function () { return global.OIKOS.state.paused === true; }
+  };
+
+  // ---------------------------------------------------------------------
+  // Persistência — serializador recursivo ciente de TypedArrays.
+  // ---------------------------------------------------------------------
+  var TA = {
+    Int8Array: Int8Array, Uint8Array: Uint8Array, Uint8ClampedArray: Uint8ClampedArray,
+    Int16Array: Int16Array, Uint16Array: Uint16Array,
+    Int32Array: Int32Array, Uint32Array: Uint32Array,
+    Float32Array: Float32Array, Float64Array: Float64Array
+  };
+
+  function enc(v) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      return { __ta: v.constructor.name, v: Array.prototype.slice.call(v) };
+    }
+    if (Array.isArray(v)) return v.map(enc);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = enc(v[k]);
+      return o;
+    }
+    return v;
+  }
+  function dec(v) {
+    if (v && typeof v === 'object' && typeof v.__ta === 'string' && Array.isArray(v.v)) {
+      var C = TA[v.__ta];
+      if (!C) throw new Error('TypedArray desconhecido: ' + v.__ta);
+      return C.from(v.v);
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = dec(v[k]);
+      return o;
+    }
+    return v;
+  }
+
+  function serialize(state) { return JSON.stringify(enc(state)); }
+
+  function deserialize(json) {
+    try {
+      var raw = JSON.parse(json);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.schemaVersion !== consts.SCHEMA_VERSION) return null;   // versão incompatível
+      return dec(raw);
+    } catch (e) { return null; }
+  }
+
+  // LACUNA: a spec exige localStorage, mas alguns navegadores o negam em
+  // file://. Fallback em memória mantém save/load funcionais sem lançar.
+  var memStore = Object.create(null);
+  function store() {
+    try {
+      if (global.localStorage) { global.localStorage.getItem(consts.SAVE_KEY); return global.localStorage; }
+    } catch (e) { /* bloqueado pelo navegador */ }
+    return {
+      getItem: function (k) { return (k in memStore) ? memStore[k] : null; },
+      setItem: function (k, v) { memStore[k] = String(v); }
+    };
+  }
+
+  function save() {
+    try { store().setItem(consts.SAVE_KEY, serialize(global.OIKOS.state)); }
+    catch (e) { console.error('[OIKOS] save falhou:', e); }
+  }
+
+  function load() {
+    var json;
+    try { json = store().getItem(consts.SAVE_KEY); }
+    catch (e) { return false; }
+    if (!json) return false;
+    var st = deserialize(json);
+    if (!st) return false;                       // estado vigente permanece intocado
+    global.OIKOS.state = st;
+    global.OIKOS.rng = makeRng(st.seed);         // regra 5.6: rng recriado da seed
+    acc = 0;
+    loop.pause();                                // regra 5.7: retoma PAUSADO
+    return true;
+  }
+
+  // Regra 5.6: o rng NÃO é serializado. Após load(), os draws do stream
+  // principal recomeçam da seed; o determinismo ESTRUTURAL se preserva
+  // porque cada módulo usa rng.child('<label>'), derivado só da seed.
+  // LACUNA: seed inicial de boot não especificada — constante fixa
+  // (Math.random é proibido).
+  var DEFAULT_SEED = 1337;
+
+  function reset(newSeed) {
+    // LACUNA: reset() sem argumento não foi especificado — reutiliza a seed atual.
+    var s = (newSeed === undefined || newSeed === null)
+      ? (global.OIKOS.state ? global.OIKOS.state.seed : DEFAULT_SEED)
+      : newSeed;
+    global.OIKOS.state = makeState(s);
+    global.OIKOS.rng = makeRng(s);
+    acc = 0;
+  }
+
+  global.OIKOS = {
+    consts: consts,
+    makeRng: makeRng,
+    rng: makeRng(DEFAULT_SEED),
+    state: makeState(DEFAULT_SEED),
+    makeState: makeState,
+    bus: bus,
+    use: use,
+    loop: loop,
+    save: save,
+    load: load,
+    reset: reset,
+    serialize: serialize,
+    deserialize: deserialize
+  };
+})(window);
+/* ===== OIKOS S1 KERNEL — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S2 WORLDGEN — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var OCEANO = 0, DOCE = 1, AREIA = 2, GRAMA = 3, FERTIL = 4, FLORESTA = 5, PEDRA = 6, MONTANHA = 7;
+  var CACA = 1, PEIXE = 2, COBRE = 3, FERRO = 4, CARVAO = 5;
+
+  // DECISÃO: faixa de borda forçada a oceano — o aceite exige perímetro 100%
+  // marítimo em toda seed, e uma máscara radial folgada garante isso por
+  // construção, sem depender de sorte do ruído.
+  var MARGEM = 3;
+  // Nível do mar ADAPTATIVO por quantil em vez de limiar fixo: o aceite
+  // "terra >= 900" passa a ser estrutural, não estatístico.
+  // Variabilidade (opção B da auditoria): o alvo de terra e a fração de floresta
+  // são SORTEADOS por seed, dentro de faixas que preservam os aceites.
+  // DECISÃO: o piso do alvo é 1010 e não 950 — o quantil é calculado ANTES de o
+  // rio converter terra em água doce, e 60 tiles de folga mantêm o piso real
+  // acima de 900 mesmo num rio longo, sem estourar o teto de 1350.
+  var TERRA_MIN = 1010, TERRA_MAX = 1350;
+  var FLORESTA_MIN = 0.12, FLORESTA_MAX = 0.26;
+
+  function smooth(t) { return t * t * (3 - 2 * t); }
+
+  function malha(rng, n) {
+    var g = new Float32Array(n * n);
+    for (var i = 0; i < g.length; i++) g[i] = rng.f();
+    return { g: g, n: n };
+  }
+
+  // amostra bilinear com suavização e wrap toroidal
+  function amostra(L, x, y) {
+    var n = L.n, fx = x * n, fy = y * n;
+    var ix = Math.floor(fx), iy = Math.floor(fy);
+    var tx = smooth(fx - ix), ty = smooth(fy - iy);
+    var x0 = ((ix % n) + n) % n, y0 = ((iy % n) + n) % n;
+    var x1 = (x0 + 1) % n, y1 = (y0 + 1) % n;
+    var topo = L.g[y0 * n + x0] + (L.g[y0 * n + x1] - L.g[y0 * n + x0]) * tx;
+    var base = L.g[y1 * n + x0] + (L.g[y1 * n + x1] - L.g[y1 * n + x0]) * tx;
+    return topo + (base - topo) * ty;
+  }
+
+  // fBm de 4 oitavas (malhas 4, 8, 16, 32), amplitude meio a meio
+  function fbm(rng, oitavas, base) {
+    var Ls = [], n = base;
+    for (var i = 0; i < oitavas; i++) { Ls.push(malha(rng, n)); n *= 2; }
+    return function (x, y) {
+      var amp = 1, soma = 0, norma = 0;
+      for (var j = 0; j < Ls.length; j++) { soma += amp * amostra(Ls[j], x, y); norma += amp; amp *= 0.5; }
+      return soma / norma;
+    };
+  }
+
+  // --- rio: descida greedy do pico ao mar -------------------------------
+  function proximoLeito(T, e, M, cur, visto) {
+    var cx = cur % M, cy = (cur - cx) / M, alvo = -1, menor = e[cur];
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      var ni = ny * M + nx;
+      if (T[ni] === OCEANO) return { mar: true, i: ni };
+      if (visto[ni]) continue;
+      if (e[ni] < menor) { menor = e[ni]; alvo = ni; }
+    }
+    return { mar: false, i: alvo };
+  }
+
+  function lago(T, M, cur) {
+    var cx = cur % M, cy = (cur - cx) / M, n = 0;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      var ni = ny * M + nx;
+      if (T[ni] !== OCEANO && T[ni] !== DOCE) { T[ni] = DOCE; n++; }
+    }
+    return n;
+  }
+
+  function cavarRio(T, e, M) {
+    // nascente = ponto mais alto da montanha. Sem montanha não há nascente e a
+    // ilha fica sem rio (hasRiver:false) — hidrelétricas somem do menu futuro.
+    var pico = -1, melhor = -Infinity;
+    for (var i = 0; i < T.length; i++) if (T[i] === MONTANHA && e[i] > melhor) { melhor = e[i]; pico = i; }
+    if (pico < 0) return { len: 0, chegou: false };
+
+    var cur = pico, len = 0, chegou = false, passos = 0;
+    var visto = new Uint8Array(T.length);
+    while (passos++ < T.length) {
+      visto[cur] = 1;
+      if (T[cur] !== OCEANO && T[cur] !== DOCE) { T[cur] = DOCE; len++; }
+      var p = proximoLeito(T, e, M, cur, visto);
+      if (p.mar) { chegou = true; break; }
+      if (p.i < 0) { len += lago(T, M, cur); break; }   // depressão: vira lago
+      cur = p.i;
+    }
+    return { len: len, chegou: chegou };
+  }
+
+  function perto(T, M, raio) {   // marca tiles a até `raio` passos de água doce
+    var N = T.length, dist = new Uint8Array(N), fila = [];
+    for (var i = 0; i < N; i++) if (T[i] === DOCE) { dist[i] = 1; fila.push(i); }
+    for (var d = 1; d <= raio; d++) {
+      var prox = [];
+      for (var f = 0; f < fila.length; f++) {
+        var cur = fila[f], cx = cur % M, cy = (cur - cx) / M;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          var nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+          var ni = ny * M + nx;
+          if (!dist[ni]) { dist[ni] = 1; prox.push(ni); }
+        }
+      }
+      fila = prox;
+    }
+    return dist;
+  }
+
+  function temTerraAoLado(T, M, i) {
+    var cx = i % M, cy = (i - cx) / M;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      if (T[ny * M + nx] >= AREIA) return true;
+    }
+    return false;
+  }
+
+  // generate() — determinística pela seed vigente. Escreve APENAS em
+  // state.tiles.{terrain,resource} e em state.geo.
+  function generate() {
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, R = st.tiles.resource;
+    T.fill(OCEANO); R.fill(0);
+
+    // 0. premissas da ilha, sorteadas por seed
+    // LACUNA: a carta fixa os streams 'elev', 'fert', 'forest' e 'ore'. A opção B
+    // da auditoria exige um sorteio de premissas por seed, então declaro o label
+    // novo 'world' em vez de roubar draws de um stream de contrato.
+    var rw = O.rng.child('world');
+    var terraAlvo = TERRA_MIN + rw.i(TERRA_MAX - TERRA_MIN + 1);
+    var florestaFrac = FLORESTA_MIN + rw.f() * (FLORESTA_MAX - FLORESTA_MIN);
+
+    // 1. elevação: fBm 4 oitavas × máscara radial
+    var ruidoE = fbm(O.rng.child('elev'), 4, 4);
+    var e = new Float32Array(N);
+    var c = (M - 1) / 2, raio = (M / 2) - MARGEM;
+    for (var y = 0; y < M; y++) for (var x = 0; x < M; x++) {
+      var dx = (x - c) / raio, dy = (y - c) / raio;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      e[y * M + x] = d >= 1 ? 0 : ruidoE(x / M, y / M) * (1 - smooth(d));
+    }
+
+    // 2. nível do mar por quantil
+    var ord = Float32Array.from(e); ord.sort();
+    var alvo = Math.min(terraAlvo, N - 1);
+    var mar = ord[N - alvo], maxE = ord[N - 1];
+    if (!(mar > 0)) mar = 1e-6;                       // ilha degenerada
+    if (!(maxE > mar)) maxE = mar + 1e-6;
+
+    // 3. faixas de terreno por altura normalizada
+    var alt = new Float32Array(N), i;
+    for (i = 0; i < N; i++) {
+      if (e[i] < mar || e[i] <= 0) continue;          // permanece oceano
+      var h = (e[i] - mar) / (maxE - mar);
+      alt[i] = h;
+      T[i] = h < 0.10 ? AREIA : h < 0.70 ? GRAMA : h < 0.88 ? PEDRA : MONTANHA;
+    }
+
+    // 4. rio
+    var rio = cavarRio(T, e, M);
+
+    // 5. solo fértil: ruído próprio, amplificado na várzea do rio
+    var ruidoF = fbm(O.rng.child('fert'), 4, 4);
+    var varzea = perto(T, M, 2);
+    for (i = 0; i < N; i++) {
+      if (T[i] !== GRAMA) continue;
+      var f = ruidoF((i % M) / M, Math.floor(i / M) / M) + (varzea[i] ? 0.22 : 0);
+      if (f > 0.60) T[i] = FERTIL;
+    }
+
+    // 6. floresta: os K tiles de maior ruído entre grama e fértil
+    var ruidoV = fbm(O.rng.child('forest'), 4, 4);
+    var terra = 0, eleg = [], nota = new Float32Array(N);
+    for (i = 0; i < N; i++) {
+      if (T[i] >= AREIA) terra++;
+      if (T[i] === GRAMA || T[i] === FERTIL) {
+        eleg.push(i);
+        nota[i] = ruidoV((i % M) / M, Math.floor(i / M) / M);
+      }
+    }
+    eleg.sort(function (a, b) { return (nota[b] - nota[a]) || (a - b); });  // ordem total
+    var kF = Math.min(eleg.length, Math.round(florestaFrac * terra));
+    for (i = 0; i < kF; i++) T[eleg[i]] = FLORESTA;
+
+    // 7. veios — só em rocha e montanha (emenda da auditoria): "ilha montanhosa
+    // = ilha rica em minério" volta a ser premissa que varia entre partidas.
+    // DECISÃO: o tipo é estratificado DENTRO da faixa mineira (altura relativa
+    // a [0.70, 1.0]). Com os limiares absolutos de antes, todo veio cairia em
+    // ferro e cobre/carvão desapareceriam do jogo.
+    var ro = O.rng.child('ore');
+    var mineral = [];
+    for (i = 0; i < N; i++) if (T[i] === PEDRA || T[i] === MONTANHA) mineral.push(i);
+    var veios = mineral.length ? 10 + ro.i(9) : 0, postos = 0;
+    for (var v = 0; v < veios; v++) {
+      var semente = ro.pick(mineral);
+      var rel = (alt[semente] - 0.70) / 0.30;
+      var tipo = rel < 0.35 ? COBRE : rel < 0.70 ? CARVAO : FERRO;
+      var tam = 2 + ro.i(4), postosNoVeio = 0;
+      var vx = semente % M, vy = (semente - vx) / M;
+      for (var s = 0; s < tam; s++) {
+        var nx = vx + ro.i(3) - 1, ny = vy + ro.i(3) - 1;
+        if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+        var ni = ny * M + nx;
+        if ((T[ni] !== PEDRA && T[ni] !== MONTANHA) || R[ni] !== 0) continue;
+        R[ni] = tipo; postosNoVeio++;
+      }
+      if (postosNoVeio) postos++;
+    }
+
+    // 8. caça na floresta e peixe na água de beira
+    // LACUNA: a carta lista caça(1) e peixe(2) no domínio de resource e a S7
+    // depende de pesca, mas não diz qual stream os coloca. Reaproveita 'ore'
+    // (o stream de recursos) em vez de inventar um label fora do contrato.
+    for (i = 0; i < N; i++) if (T[i] === FLORESTA && R[i] === 0 && ro.f() < 0.18) R[i] = CACA;
+    for (i = 0; i < N; i++) {
+      if (T[i] !== OCEANO && T[i] !== DOCE) continue;
+      if (R[i] !== 0 || ro.f() >= 0.35) continue;
+      if (temTerraAoLado(T, M, i)) R[i] = PEIXE;
+    }
+
+    // 9. resumo geográfico consumido pelas decisões sensíveis a contexto
+    var landTiles = 0, forestTiles = 0, fertileTiles = 0, montanhas = 0;
+    for (i = 0; i < N; i++) {
+      if (T[i] < AREIA) continue;
+      landTiles++;
+      if (T[i] === FLORESTA) forestTiles++;
+      else if (T[i] === FERTIL) fertileTiles++;
+      if (T[i] === MONTANHA) montanhas++;
+    }
+    st.geo = {
+      riverLength: rio.len,
+      hasRiver: rio.chegou,
+      forestTiles: forestTiles,
+      fertileTiles: fertileTiles,
+      oreVeins: postos,
+      mountainness: landTiles ? montanhas / landTiles : 0,
+      landTiles: landTiles
+    };
+    return st.geo;
+  }
+
+  O.Worldgen = { generate: generate };
+})(window);
+/* ===== OIKOS S2 WORLDGEN — FIM ===== */
+</script>
+<script>
+/* ================== HARNESS S2 — critérios de aceite ================== */
+(function () {
+  'use strict';
+  var O = window.OIKOS, W = O.Worldgen, res = [];
+  function t(id, nome, ok, det) { res.push({ id: id, nome: nome, ok: !!ok, det: det || '' }); }
+  var M = O.consts.MAP, N = M * M;
+
+  function fnv1a(arr) {
+    var h = 0x811c9dc5 >>> 0;
+    for (var i = 0; i < arr.length; i++) { h ^= arr[i]; h = Math.imul(h, 0x01000193) >>> 0; }
+    return (h >>> 0).toString(16);
+  }
+
+  // ---- varredura de 30 seeds (critérios 2, 3, 4, 5, 7, 9) --------------
+  var seeds = [], erros = [], perimetroOk = true, minTerra = Infinity, maxTerra = -Infinity;
+  var fracMin = Infinity, fracMax = -Infinity, geoOk = true, dominioOk = true;
+  var comRio = 0, terras = {}, minerioSoNaRocha = true, tiposVistos = {};
+  var maiorRio = 0;
+  var t0 = performance.now();
+  for (var s = 0; s < 30; s++) {
+    var seed = 1000 + s * 37;
+    seeds.push(seed);
+    try {
+      O.reset(seed);
+      var geo = W.generate();
+      var T = O.state.tiles.terrain, R = O.state.tiles.resource, i;
+
+      for (i = 0; i < M; i++) {
+        if (T[i] !== 0 || T[(M - 1) * M + i] !== 0 || T[i * M] !== 0 || T[i * M + M - 1] !== 0) perimetroOk = false;
+      }
+      if (geo.landTiles < minTerra) minTerra = geo.landTiles;
+      if (geo.landTiles > maxTerra) maxTerra = geo.landTiles;
+      terras[geo.landTiles] = 1;
+      var frac = geo.forestTiles / geo.landTiles;
+      if (frac < fracMin) fracMin = frac;
+      if (frac > fracMax) fracMax = frac;
+      if (geo.hasRiver) comRio++;
+      if (geo.riverLength > maiorRio) maiorRio = geo.riverLength;
+
+      for (i = 0; i < N; i++) {
+        if (R[i] < 3) continue;                       // 3 cobre, 4 ferro, 5 carvão
+        tiposVistos[R[i]] = 1;
+        if (T[i] !== 6 && T[i] !== 7) minerioSoNaRocha = false;
+      }
+
+      var campos = ['riverLength', 'hasRiver', 'forestTiles', 'fertileTiles', 'oreVeins', 'mountainness', 'landTiles'];
+      for (i = 0; i < campos.length; i++) if (!(campos[i] in geo)) geoOk = false;
+      if (!(geo.mountainness >= 0 && geo.mountainness <= 1)) geoOk = false;
+      if (geo.hasRiver && geo.riverLength <= 0) geoOk = false;
+      if (geo.oreVeins <= 0) geoOk = false;
+
+      for (i = 0; i < N; i++) {
+        if (T[i] > 7) dominioOk = false;
+        if (R[i] > 5) dominioOk = false;
+        if (R[i] !== 0 && T[i] >= 2 && R[i] === 2) dominioOk = false;   // peixe nunca em terra firme
+      }
+    } catch (err) { erros.push(seed + ': ' + err.message); }
+  }
+  var msVarredura = performance.now() - t0;
+
+  t(2, 'Mar em 100% do perímetro em todas as 30 seeds', perimetroOk && !erros.length,
+    'perímetro limpo=' + perimetroOk);
+  t(3, 'Terra >= 900 tiles em todas as 30 seeds', minTerra >= 900 && !erros.length,
+    'mínimo observado = ' + minTerra + ' tiles');
+  t(4, 'Floresta entre 8% e 30% da terra em todas as 30 seeds',
+    fracMin >= 0.08 && fracMax <= 0.30 && !erros.length,
+    'faixa = ' + (fracMin * 100).toFixed(1) + '% a ' + (fracMax * 100).toFixed(1) + '%');
+  t(5, '30 seeds geradas sem exceção', erros.length === 0,
+    erros.length ? erros.slice(0, 3).join(' | ') : '30/30 em ' + msVarredura.toFixed(0) + ' ms');
+  t(7, 'geo preenchido com os 7 campos e valores coerentes', geoOk,
+    'maior rio observado = ' + maiorRio + ' tiles');
+  t(9, 'Domínios respeitados: terrain em 0..7, resource em 0..5, peixe só na água', dominioOk);
+
+  // D20: o limiar de rio agora é asserção, não curiosidade
+  t(11, 'D20: hasRiver em pelo menos 20 das 30 seeds (ilhas sem rio são premissa, não falha)',
+    comRio >= 20, comRio + '/30 seeds com rio que alcança o mar');
+
+  // Variabilidade (opção B) — premissas sorteadas por seed no stream 'world'
+  (function () {
+    var distintas = Object.keys(terras).length;
+    var espalhaTerra = (maxTerra - minTerra) >= 150;
+    var espalhaFloresta = (fracMax - fracMin) >= 0.05;
+    t(12, 'Variabilidade: alvo de terra e fração de floresta sorteados por seed, sem violar os aceites',
+      distintas >= 25 && espalhaTerra && espalhaFloresta && minTerra >= 900 && fracMax <= 0.30,
+      'terra ' + minTerra + '–' + maxTerra + ' em ' + distintas + ' valores distintos · floresta ' +
+      (fracMin * 100).toFixed(1) + '%–' + (fracMax * 100).toFixed(1) + '%');
+  })();
+
+  // Emenda dos veios
+  t(13, 'Veios só em pedra e montanha, com cobre, ferro e carvão todos presentes na varredura',
+    minerioSoNaRocha && Object.keys(tiposVistos).length === 3,
+    'minério fora de rocha=' + (!minerioSoNaRocha) + ' · tipos vistos=' + Object.keys(tiposVistos).join(','));
+
+  // ---- 1. hash FNV-1a do terrain estável por seed ----------------------
+  (function () {
+    O.reset(42); W.generate(); var h1 = fnv1a(O.state.tiles.terrain);
+    O.reset(42); W.generate(); var h2 = fnv1a(O.state.tiles.terrain);
+    var idem = (function () { W.generate(); return fnv1a(O.state.tiles.terrain); })();
+    O.reset(43); W.generate(); var h3 = fnv1a(O.state.tiles.terrain);
+    t(1, 'Hash FNV-1a do terrain: estável e idempotente por seed, distinto entre seeds',
+      h1 === h2 && h1 === idem && h1 !== h3,
+      'seed42=' + h1 + ' · repetida=' + h2 + ' · idempotente=' + idem + ' · seed43=' + h3);
+  })();
+
+  // ---- 6. generate não altera nada além de tiles e geo -----------------
+  (function () {
+    O.reset(4242);
+    O.state.year = 12; O.state.era = 2; O.state.res.wood = 40;
+    O.state.institutions.push({ id: 'inst.terraComum', yearAdopted: 3 });
+    O.state.chronicle.push({ id: 'c1', type: 'marco', text: 'x', year: 1, era: 0 });
+    O.state.camera.zoom = 1.75; O.state.meters.legitimacy = 61;
+    function fora(st) {
+      var c = {};
+      for (var k in st) if (k !== 'tiles' && k !== 'geo') c[k] = st[k];
+      return O.serialize(c);
+    }
+    var antes = fora(O.state);
+    W.generate();
+    var depois = fora(O.state);
+    var poluicaoIntacta = true, predios = true;
+    for (var i = 0; i < N; i++) {
+      if (O.state.tiles.pollution[i] !== 0) poluicaoIntacta = false;
+      if (O.state.tiles.building[i] !== 0 || O.state.tiles.level[i] !== 0 || O.state.tiles.owner[i] !== 0) predios = false;
+    }
+    t(6, 'generate() escreve só em tiles e geo: demais campos do estado intocados',
+      antes === depois && poluicaoIntacta && predios,
+      'estado fora de tiles/geo idêntico=' + (antes === depois) +
+      ' · building/level/owner/pollution zerados=' + (predios && poluicaoIntacta));
+  })();
+
+  // ---- 8. determinismo estrutural sob load() ---------------------------
+  (function () {
+    O.reset(777); W.generate();
+    var alvo = fnv1a(O.state.tiles.terrain);
+    var geoAlvo = JSON.stringify(O.state.geo);
+    O.save();
+    O.reset(31415); W.generate();
+    var outro = fnv1a(O.state.tiles.terrain);
+    var okLoad = O.load();
+    W.generate();                                   // rng recriado da seed restaurada
+    var depois = fnv1a(O.state.tiles.terrain);
+    t(8, 'Determinismo estrutural: após load(), generate() reproduz a mesma ilha (streams por label)',
+      okLoad && depois === alvo && outro !== alvo && JSON.stringify(O.state.geo) === geoAlvo,
+      'seed777=' + alvo + ' · outra seed=' + outro + ' · pós-load=' + depois);
+  })();
+
+  // ---- 10. relatório visual da ilha da seed 42 -------------------------
+  (function () {
+    O.reset(42); var geo = W.generate();
+    var T = O.state.tiles.terrain, cont = [0, 0, 0, 0, 0, 0, 0, 0];
+    for (var i = 0; i < N; i++) cont[T[i]]++;
+    var nomes = ['oceano', 'água doce', 'areia', 'grama', 'fértil', 'floresta', 'pedra', 'montanha'];
+    var linha = [];
+    for (var j = 0; j < 8; j++) linha.push(nomes[j] + '=' + cont[j]);
+    t(10, 'Perfil da seed 42 (inspeção, não é limiar)', true,
+      linha.join(' · ') + ' || rio=' + geo.riverLength + ' hasRiver=' + geo.hasRiver +
+      ' veios=' + geo.oreVeins + ' montanhosidade=' + geo.mountainness.toFixed(3));
+  })();
+
+  render(res, 'saida', 'resumo', 'OIKOS S2');
+  function render(lista, elTab, elRes, tag) {
+    lista.sort(function (a, b) { return a.id - b.id; });
+    document.getElementById(elTab).innerHTML =
+      '<table><tr><th>#</th><th>Critério</th><th>Status</th><th>Detalhe</th></tr>' +
+      lista.map(function (r) {
+        return '<tr><td>' + r.id + '</td><td>' + r.nome + '</td><td class="' + (r.ok ? 'pass' : 'fail') +
+          '">' + (r.ok ? 'PASS' : 'FAIL') + '</td><td class="det">' + r.det + '</td></tr>';
+      }).join('') + '</table>';
+    var pass = lista.filter(function (r) { return r.ok; }).length;
+    document.getElementById(elRes).innerHTML =
+      '<b class="' + (pass === lista.length ? 'pass' : 'fail') + '">' + pass + '/' + lista.length + ' PASS</b>';
+    console.table(lista.map(function (r) {
+      return { '#': r.id, criterio: r.nome, status: r.ok ? 'PASS' : 'FAIL', detalhe: r.det };
+    }));
+    console.log(tag + ' harness: ' + pass + '/' + lista.length + ' PASS');
+  }
+})();
+</script>
+</body>
+</html>
