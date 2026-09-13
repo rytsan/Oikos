@@ -1518,6 +1518,26 @@
     return x >= 0 && y >= 0 && x < M && y < M;
   }
 
+  // EMENDA v1.13 D44: existe fronteira?
+  // TRAVA MONOTÔNICA, não cache por ano. Cachear por (estado, ano) deixava o
+  // valor velho servir quando a fronteira nascia DENTRO do mesmo ano — que é
+  // exatamente quando a regra passa a valer, já que a S9 expande no tick.
+  // Aqui: enquanto não há fronteira, varre (custo real só nesse caso, e com
+  // saída na primeira ocorrência); assim que aparece, trava em true e vira
+  // O(1). A trava só é solta quando o kernel reatribui o estado.
+  // Se uma fronteira existente fosse inteiramente apagada sem troca de estado,
+  // a trava seguiria dizendo true — não acontece neste desenho, e o custo
+  // seria recusar construção, não permitir indevidamente.
+  var fronteiraCache = { st: null, tem: false };
+  function temFronteira() {
+    var st = O.state;
+    if (fronteiraCache.st !== st) { fronteiraCache.st = st; fronteiraCache.tem = false; }
+    if (fronteiraCache.tem) return true;
+    var OWN = st.tiles.owner;
+    for (var i = 0; i < OWN.length; i++) if (OWN[i]) { fronteiraCache.tem = true; return true; }
+    return false;
+  }
+
   function vizinhoTem(x, y, raio, teste) {
     var M = O.consts.MAP, T = O.state.tiles.terrain;
     for (var dy = -raio; dy <= raio; dy++) for (var dx = -raio; dx <= raio; dx++) {
@@ -1552,6 +1572,11 @@
     var M = O.consts.MAP, i2 = y * M + x, st = O.state;
     if (st.tiles.terrain[i2] < 2) return { ok: false, motivo: 'agua' };
     if (st.tiles.building[i2] !== 0) return { ok: false, motivo: 'ocupado' };
+    // EMENDA v1.13 D44: tile fora da fronteira não é zoneável (spec S9). Lemos
+    // tiles.owner DIRETO: a seção 4.2 não permite ao S7 consumir Border. A
+    // regra só vale QUANDO a fronteira existe — com owner ainda todo zerado,
+    // enforce incondicional deixaria a Casa sem lugar para a primeira obra.
+    if (temFronteira() && st.tiles.owner[i2] === 0) return { ok: false, motivo: 'fora da fronteira' };
     if (!condicaoOk(b.onde, x, y)) return { ok: false, motivo: 'condicao ' + b.onde };
     for (var k in b.custo) if (Object.prototype.hasOwnProperty.call(b.custo, k)) {
       if ((st.res[k] || 0) < b.custo[k]) return { ok: false, motivo: 'falta ' + k };
