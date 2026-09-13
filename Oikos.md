@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.14 · Estado: rodadas 2, 3 e 4 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7 no index.html, smoke OK); rodada 5 (S8 Eras + S9 Fronteira) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.14 · Estado: rodadas 2 a 5 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7+S8+S9 no index.html, smoke OK); rodada 6 (S10 Decadência + S11 Epílogo + S12 UI) delegável. Sem a S12, a partida fica pausada na primeira transição de era (D46)Como usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -126,8 +126,8 @@ Rodada	Specs	Paralelo	Estado
 2	S2 + S4 + S6	sim	✅ auditado (emendas D21/D22 aplicam-se na extração)
 3	S3 + S5	sim	✅ auditado e integrado (emendas D35/D36 na S3, D37/D38 na S5)
 4	S7	—	✅ auditado e integrado (emendas D41/D42/D43 na extração)
-5	S8 + S9	sim	delegável (rodada 4 integrada)
-6	S10 + S11 + S12	sim	—
+5	S8 + S9	sim	✅ auditado e integrado (emendas D45/D46 no S8; a auditoria da S9 gerou a D44, emenda no S7)
+6	S10 + S11 + S12	sim	delegável (rodada 5 integrada)
 7	S13, item a item	sim	—
 8.3 Fluxo por rodada
 Delegar → testar harness localmente → auditar → emendar (aprovado) →integrar → rodar o jogo → próxima rodada. Nunca delegar a rodada seguintecom a anterior não integrada.Delegação oficial: prompts em docs/delegacoes/, montados portools/monta-delegacao.js, que injeta a carta e o RUNTIME INTEGRADO vigentesno envio: o kernel sozinho quando o módulo é independente, e os blocosintegrados inteiros quando o módulo depende de outros já auditados — o S7consome Mods, Chron e a ilha do Worldgen, e seu harness não roda sem eles.Nada é duplicado em novo local: a fonte é sempre o index.html, recortadoentre marcadores na hora do envio (D32).
@@ -214,8 +214,8 @@ S4 Elíptico	✅ v1.5	✅	✅ (código + harness 11/11 medido; emenda D21)	✅ i
 S5 Mods	✅ v1.5 + adendo	✅	✅ (código + harness 12/12 +0 SKIP; parecer do auditor #2; D37, D38)	✅ integrado no index.html (sessão #1)
 S6 Crônicas	✅ v1.5	✅	✅ (código + harness 9/9; emenda D22)	✅ integrado no index.html (sessão #1)
 S7 Sim	✅ v1.5	✅	✅ (código + harness 12/12; parecer do auditor #2; D39–D43)	✅ integrado no index.html (sessão #1)
-S8 Eras	✅ v1.5	☐	☐	☐
-S9 Fronteira	✅ v1.5	☐	☐	☐
+S8 Eras	✅ v1.5	✅	✅ (código + harness 12/12; parecer do auditor #2; D45, D46; ratificações pendentes)	✅ integrado no index.html (sessão #1)
+S9 Fronteira	✅ v1.5	✅	✅ (código + harness 10/10; parecer do auditor #2; sem emendas próprias; ratificações pendentes)	✅ integrado no index.html (sessão #1)
 S10 Decadência	✅ v1.5	☐	☐	☐
 S11 Epílogo	✅ v1.5	☐	☐	☐
 S12 UI	✅ v1.5	☐	☐	☐
