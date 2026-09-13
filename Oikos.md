@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.14 · Estado: rodadas 2 a 5 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7+S8+S9 no index.html, smoke OK); rodada 6 (S10 Decadência + S11 Epílogo + S12 UI) delegável. Sem a S12, a partida fica pausada na primeira transição de era (D46)Como usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.15 · Estado: rodadas 2 a 6 auditadas e integradas — os DOZE módulos S1–S12 no index.html, smoke OK. A pausa da transição de era, conhecida desde a D46, está resolvida: a S12 retoma o loop ao fechar o modal. Rodada 7 (S13 Polish, item a item) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -127,8 +127,8 @@ Rodada	Specs	Paralelo	Estado
 3	S3 + S5	sim	✅ auditado e integrado (emendas D35/D36 na S3, D37/D38 na S5)
 4	S7	—	✅ auditado e integrado (emendas D41/D42/D43 na extração)
 5	S8 + S9	sim	✅ auditado e integrado (emendas D45/D46 no S8; a auditoria da S9 gerou a D44, emenda no S7)
-6	S10 + S11 + S12	sim	delegável (rodada 5 integrada)
-7	S13, item a item	sim	—
+6	S10 + S11 + S12	sim	✅ auditado e integrado (emenda D47 no S12; S10 e S11 sem emendas)
+7	S13, item a item	sim	delegável (rodada 6 integrada)
 8.3 Fluxo por rodada
 Delegar → testar harness localmente → auditar → emendar (aprovado) →integrar → rodar o jogo → próxima rodada. Nunca delegar a rodada seguintecom a anterior não integrada.Delegação oficial: prompts em docs/delegacoes/, montados portools/monta-delegacao.js, que injeta a carta e o RUNTIME INTEGRADO vigentesno envio: o kernel sozinho quando o módulo é independente, e os blocosintegrados inteiros quando o módulo depende de outros já auditados — o S7consome Mods, Chron e a ilha do Worldgen, e seu harness não roda sem eles.Nada é duplicado em novo local: a fonte é sempre o index.html, recortadoentre marcadores na hora do envio (D32).
 
@@ -205,6 +205,10 @@ D43	Emenda S7 na extração: geo.forestTiles e geo.fertileTiles são mantidos VI
 D44	Emenda S7 na extração: canBuild recusa tile fora da fronteira QUANDO a fronteira existe, lendo tiles.owner direto	a spec da S9 diz que tile fora da fronteira não é zoneável, mas quem valida é o S7, e a seção 4.2 não permite que ele consuma Border — então a checagem lê o campo compartilhado, não o módulo vizinho. O "quando existe" não é cautela decorativa: com owner ainda todo zerado, enforce incondicional deixaria a Casa sem lugar para a primeira construção. Decisão do dono contra a proposta do parecer da S9, que adiava a aplicação para a fase de UI
 D45	Emenda S8 na extração: abrirDecisao() não pausa nem emite decision:open quando a era não tem opção alguma	depois da Era 5, ou quando as duas leis da era vigente já foram adotadas, o jogo congelava num modal sem nada para escolher (achado 1 da auditoria do S8, severidade média)
 D46	A S12 é dona do resume: o S8 PAUSA ao abrir a decisão e NÃO retoma; quem devolve o loop ao jogo é a UI, ao fechar o modal	a seção 5.7 dá ao loop a autoridade da pausa e a spec da S12 já descreve o modal de decisão que pausa o tick; concentrar o par pausa/retoma em quem desenha o modal evita dois módulos disputando o mesmo estado. Até a S12 existir, a partida fica pausada após a transição de era — comportamento conhecido e documentado, não defeito
+D47	Emenda S12 na extração: clique no canvas efetiva a ferramenta selecionada (Sim.place, ou Border.decretar quando a ferramenta é o decreto), e os painéis de Crônicas e Constituição passam a ser montados no DOM, alternados por tecla	a toolbar gravava state.tool e as hotkeys funcionavam, mas nada agia sobre isso: a UI parecia completa e não plantava um edifício (achado 1 da auditoria do S12, severidade alta). Os dois painéis constam da spec da S12 como entregáveis, então deixá-los só como função lógica não cumpre o aceite (achado 2)
+D48	Extensão da seção 4.2: a camada de apresentação (S12) e o gerador de epílogo (S11) PODEM consumir as APIs públicas dos módulos de domínio — Sim, Eras, Border, Render, Decay	a 4.2 foi escrita antes de existir um módulo cujo propósito é orquestrar os outros; a S12 não monta toolbar sem Sim.BUILDINGS nem painel sem Eras.custoReforma, e o S11 não conta ruínas sem saber o id que a S10 definiu. Alternativa considerada e rejeitada: mover o id de ruína para consts, o que obrigaria a editar o kernel auditado desde a rodada 1. A vedação continua valendo entre módulos de domínio
+D49	Ratificações da rodada 5 — S8: divisor custo/10 na legitimidade da reforma, consumo de 100 de conhecimento na adoção, catálogo de 6 eras e 12 instituições em pares com gates; S9: semântica de tiles.owner (0 fora, 1 dentro) e superfície de export do Border	itens que os pareceres propuseram e que estavam pendentes desde a rodada 5; sem registro, a carta não documentaria o que já está rodando no index.html
+D50	Ratificações da rodada 6 — S10: id de ruína 200 em tiles.building e superfície de export; S11: superfície de export e natureza de leitor puro sem use(); S12: superfície de export e registro em use('UI', {init, draw})	mesma razão da D49; as três superfícies não eram fixadas pela carta e foram declaradas como // LACUNA: pelos módulos
 12. Status
 Módulo	Spec	Delegado	Auditado	Integrado
 S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html (sessão #1)
@@ -216,9 +220,9 @@ S6 Crônicas	✅ v1.5	✅	✅ (código + harness 9/9; emenda D22)	✅ integrado 
 S7 Sim	✅ v1.5	✅	✅ (código + harness 12/12; parecer do auditor #2; D39–D43)	✅ integrado no index.html (sessão #1)
 S8 Eras	✅ v1.5	✅	✅ (código + harness 12/12; parecer do auditor #2; D45, D46; ratificações pendentes)	✅ integrado no index.html (sessão #1)
 S9 Fronteira	✅ v1.5	✅	✅ (código + harness 10/10; parecer do auditor #2; sem emendas próprias; ratificações pendentes)	✅ integrado no index.html (sessão #1)
-S10 Decadência	✅ v1.5	☐	☐	☐
-S11 Epílogo	✅ v1.5	☐	☐	☐
-S12 UI	✅ v1.5	☐	☐	☐
+S10 Decadência	✅ v1.5	✅	✅ (código + harness 10/10; parecer do auditor #2; D50; sem emendas)	✅ integrado no index.html (sessão #1)
+S11 Epílogo	✅ v1.5	✅	✅ (código + harness 9/9; parecer do auditor #2; D48, D50; sem emendas)	✅ integrado no index.html (sessão #1)
+S12 UI	✅ v1.5	✅	✅ (código + harness 9/9 +3 SKIP [browser]; parecer do auditor #2; D47, D48, D50)	✅ integrado no index.html (sessão #1)
 S13 Polish	✅ v1.5	☐	☐	☐
 13. Histórico de versões
 Versão	Conteúdo
@@ -237,6 +241,7 @@ v1.11	Seção 8.3: o montador injeta o RUNTIME INTEGRADO vigente, não só o ker
 v1.12	Pós-auditoria S7 (rodada 4): D39 (export e os nove targets de Mods do S7 como contrato para a S8), D40 (decisões locais ratificadas), e as emendas na extração D41 (era:ready por era, não por sessão), D42 (payload uniforme de tile:changed) e D43 (geo mantido vivo pela degradação)
 v1.13	Emenda S7 (D44): canBuild passa a recusar tile fora da fronteira quando a fronteira existe, lendo tiles.owner direto em vez de consumir o Border (vedado pela seção 4.2)
 v1.14	Emenda S8 (D45): abrirDecisao() não pausa nem abre modal sem opções; e D46 fixa a S12 como dona do resume do loop, com o S8 apenas pausando
+v1.15	Pós-auditoria da rodada 6: D47 (emenda S12 — clique efetiva a ferramenta, painéis montados), D48 (extensão da seção 4.2 para a camada de apresentação e o epílogo), D49 e D50 (ratificações pendentes das rodadas 5 e 6)
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
