@@ -2274,6 +2274,697 @@
 /* ===== OIKOS S9 BORDER — FIM ===== */
 </script>
 <script>
+/* ===== OIKOS S10 DECAY — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // LACUNA: a carta não fixa a superfície de export do S10 (como em S7, S8 e
+  // S9). Exporto o passo do ano, a leitura do estágio e o limiar/corte do
+  // catálogo — o mínimo para a S12 escrever notícia diegética e para o harness
+  // forçar a espiral sem UI.
+
+  // DECISÃO: id de ruína = 200. O S7 usa 1..5 para a Era 1 e o domínio Uint8
+  // vai até 255, então 200 fica longe de qualquer catálogo futuro de prédio.
+  // Vive em tiles.building, que serializa — ruína sobrevive a save/load de
+  // graça, como a D4 exige ("a Casa tem memória").
+  var RUINA = 200;
+
+  // LACUNA: o S3 desenha caixa 3-tons para todo building !== 0, então ruína
+  // hoje aparece como prédio inteiro — mentira visual. Corrigir exige emenda
+  // no S3 (cor/altura própria para o id de ruína), que é módulo alheio e está
+  // fora do meu escopo. DECLARO; não conserto.
+
+  var LIMIAR = [100, 220, 380];        // estagnação que abre cada estágio
+  var CORTE = [0.85, 0.70, 0.50];      // −15%, −30%, −50%
+  var COLAPSO = 560;                   // persistiu no estágio 3
+  var POLUICAO_EXTREMA = 0.55;
+
+  var ALVOS_CORTE = ['foodProd', 'woodProd', 'stoneProd', 'growth', 'housing'];
+
+  // Volátil por identidade de estado — mesmo gatilho de D23, D36, D37 e do S7.
+  // Aqui ele faz dois trabalhos: reidratar os sinalizadores de aresta E
+  // re-registrar os mods do estágio vigente, porque a D37 zera a closure do
+  // Mods no load e ninguém mais reporia os cortes da decadência.
+  var ultimoState = null, anunciado = {}, colapsou = false;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    anunciado = {};
+    colapsou = false;
+    aplicarCortes(O.state.clock ? O.state.clock.decayStage : 0);
+  }
+
+  function aplicarCortes(estagio) {
+    O.Mods.removeBySource('decay');
+    if (!estagio) return;
+    var f = CORTE[Math.min(estagio, CORTE.length) - 1];
+    for (var i = 0; i < ALVOS_CORTE.length; i++) {
+      O.Mods.push({
+        id: 'decay.' + ALVOS_CORTE[i], source: 'decay',
+        target: ALVOS_CORTE[i], kind: 'mult', value: f
+      });
+    }
+  }
+
+  // Sintoma: dispara UMA vez por limiar cruzado, nunca a cada ano acima dele.
+  // Padrão da casa (D40, fome do S7).
+  function sintoma(chave, entrada) {
+    if (anunciado[chave]) return null;
+    anunciado[chave] = true;
+    return O.Chron.log(entrada);
+  }
+
+  function poluicaoMedia() {
+    var P = O.state.tiles.pollution, n = 0, s = 0;
+    for (var i = 0; i < P.length; i++) if (P[i] > 0) { s += P[i]; n++; }
+    return n ? s / n : 0;
+  }
+
+  // Pressão do ano: tensão, fome e poluição extrema. A velocidade escala com
+  // k (rigidez sistêmica) — rigidez alta faz a Casa apodrecer mais depressa,
+  // que é a tese do pêndulo elíptico (D2) chegando na decadência.
+  function pressao() {
+    var st = O.state;
+    var tensao = Math.max(0, st.sim.tension || 0);
+    var fome = (st.res.food <= 0 && st.sim.pop > 0) ? 1 : 0;
+    var pol = poluicaoMedia();
+    var polExtrema = pol > POLUICAO_EXTREMA ? (pol - POLUICAO_EXTREMA) * 4 : 0;
+    return tensao + fome + polExtrema;
+  }
+
+  function estagio() {
+    sincronizar();
+    return O.state.clock ? (O.state.clock.decayStage || 0) : 0;
+    }
+
+  function colapsar() {
+    var st = O.state, B = st.tiles.building, N = B.length, ruinas = 0;
+    for (var i = 0; i < N; i++) if (B[i] && B[i] !== RUINA) { B[i] = RUINA; ruinas++; }
+    var perdidos = Math.round(st.sim.pop);
+    st.sim.pop = 0;                                  // êxodo
+    colapsou = true;
+    O.Chron.log({
+      type: 'desastre', titulo: 'A Casa se esvazia',
+      prosa: 'Os últimos fecham a porta atrás de si. Fica a pedra, e o que a pedra lembra.',
+      efeitoMedido: { pop: -perdidos, ruinas: ruinas, ano: st.year }
+    });
+    O.bus.emit('colony:collapsed', { ano: st.year, ruinas: ruinas, pop: perdidos });
+  }
+
+  function passo() {
+    sincronizar();
+    var st = O.state;
+    if (!st.clock) return;
+    var k = st.pendulums && st.pendulums.main ? Math.abs(st.pendulums.main.k) : 0;
+    var p = pressao();
+
+    // O relógio enche sob pressão e ALIVIA devagar quando ela cessa — sem
+    // isso, uma crise antiga condenaria a partida para sempre.
+    if (p > 0) st.clock.stagnation += p * (1 + k);
+    else st.clock.stagnation = Math.max(0, st.clock.stagnation - 0.5);
+
+    var novo = 0;
+    for (var i = 0; i < LIMIAR.length; i++) if (st.clock.stagnation >= LIMIAR[i]) novo = i + 1;
+
+    if (novo > (st.clock.decayStage || 0)) {
+      st.clock.decayStage = novo;
+      aplicarCortes(novo);
+      sintoma('estagio' + novo, {
+        type: 'desastre',
+        titulo: ['As telhas começam a faltar', 'Os campos voltam ao mato',
+                 'A Casa range e não responde'][novo - 1],
+        prosa: 'A Casa responde ao que lhe foi tomado, e responde devagar.',
+        efeitoMedido: { estagio: novo, corte: Math.round((1 - CORTE[novo - 1]) * 100),
+                        estagnacao: Math.round(st.clock.stagnation) }
+      });
+    }
+
+    if (!colapsou && st.clock.decayStage >= 3 && st.clock.stagnation >= COLAPSO) colapsar();
+  }
+
+  O.use('Decay', { init: sincronizar, update: passo });
+
+  O.Decay = {
+    passo: passo, estagio: estagio, RUINA: RUINA,
+    LIMIAR: LIMIAR, CORTE: CORTE
+  };
+})(window);
+/* ===== OIKOS S10 DECAY — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S11 EPILOGUE — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // LACUNA: a carta não fixa a superfície de export do S11. Exporto o
+  // julgamento do desfecho e o gerador de texto — o mínimo para a S12 exibir
+  // e para o harness provar que partidas diferentes geram epílogos diferentes.
+  // O S11 devolve STRING: quem desenha é a S12.
+
+  var ERAS = ['Pedra Lascada', 'Semeadura', 'Primeiro Metal',
+              'Engrenagens', 'Vapor', 'Contemporânea'];
+
+  function num(v, def) { v = Number(v); return isFinite(v) ? v : (def || 0); }
+  function pct(a, b) { return b > 0 ? Math.round((a / b) * 100) : 0; }
+  function conta(s) { return s.trim().split(/\s+/).length; }
+
+  // Enchimento em blocos, consumido só até o piso de 300 palavras. Não inventa
+  // fato algum: fala do que a crônica NÃO registrou, que é verdade em qualquer
+  // partida.
+  var ENCHIMENTO = [
+    'O resto é o que não foi dito. A Casa guarda silêncio sobre os anos em que nada pareceu ' +
+    'acontecer, e são justamente esses que a formaram: o dia sem colheita, a lei que não se ' +
+    'adotou, a árvore que ninguém derrubou porque ninguém teve pressa naquela manhã.',
+
+    'Nenhuma crônica registra o que se absteve de fazer, e ainda assim é disso que uma Casa é ' +
+    'feita — das escolhas que couberam e das que passaram longe, sem pedir licença nem deixar ' +
+    'marca no chão. O que não foi construído também ocupa lugar.',
+
+    'Houve invernos em que a única decisão foi esperar, e esperar é decisão. Houve verões em ' +
+    'que a abundância pareceu promessa, e promessa não é contrato. A ilha assistiu a tudo com ' +
+    'a paciência de quem já viu mares subirem e descerem sobre a mesma pedra.',
+
+    'Quem vier depois lerá estas linhas e verá uma ilha; quem viveu aqui viu uma vida. As duas ' +
+    'leituras são honestas, e nenhuma delas é completa. A Casa não se explica: ela permanece, ' +
+    'ou deixa de permanecer, e ambos os fins dizem a mesma coisa sobre quem a habitou.',
+
+    'Do alto, o que resta parece pequeno. De perto, foi tudo o que houve. Entre as duas ' +
+    'distâncias mora a única medida que a Casa aceita: o tempo que levou até aqui, e o que ' +
+    'escolheu fazer com ele enquanto durava.'
+  ];
+
+  function poluicaoMedia() {
+    var P = O.state.tiles.pollution, n = 0, s = 0;
+    for (var i = 0; i < P.length; i++) if (P[i] > 0) { s += P[i]; n++; }
+    return n ? s / n : 0;
+  }
+  function contaRuinas() {
+    var B = O.state.tiles.building, n = 0;
+    // LACUNA: leio O.Decay.RUINA, e a seção 4.2 NÃO lista Decay entre o que um
+    // módulo pode consumir. O fecho do epílogo precisa contar ruínas, o schema
+    // v1 não tem campo de ruína, e o id é convenção entre S10 e S11 — sem ler
+    // o módulo, restaria cravar 200 aqui e torcer para a S10 nunca mudar.
+    // Escolho a forma que acompanha a S10, com queda para o 200 conhecido, e
+    // DECLARO a dependência: ou a 4.2 se estende, ou o id de ruína vira
+    // constante do núcleo canônico. Decisão do dono.
+    var r = (O.Decay && O.Decay.RUINA) || 200;
+    for (var i = 0; i < B.length; i++) if (B[i] === r) n++;
+    return n;
+  }
+
+  // desfecho() — avalia harmonia, população e decadência.
+  function desfecho() {
+    var st = O.state;
+    var pop = num(st.sim.pop), decay = num(st.clock && st.clock.decayStage);
+    var harm = num(st.meters.harmonyAxis);
+    var ruinas = contaRuinas();
+
+    if (pop <= 0 || ruinas > 0 && pop <= 0) return { id: 'colapso', titulo: 'Colapso' };
+    if (decay >= 2) return { id: 'cicatrizada', titulo: 'A Casa cicatrizada' };
+    if (decay === 1 || poluicaoMedia() > 0.4) return { id: 'cicatrizada', titulo: 'A Casa cicatrizada' };
+    // Florescimento em três variantes, pelo eixo de harmonia
+    if (harm > 25) return { id: 'florescimento.harmonia', titulo: 'Florescimento — a Casa em concerto' };
+    if (harm < -25) return { id: 'florescimento.potencia', titulo: 'Florescimento — a Casa que se impôs' };
+    return { id: 'florescimento.equilibrio', titulo: 'Florescimento — a Casa em equilíbrio' };
+  }
+
+  // Junta as consequências ao ato que as gerou (D22): a sonda do S6 grava
+  // 'consequencia' com refs:[source] E ato:source, e a S8 registra a adoção
+  // como 'ato'. É esse par que vira "decidiu X, e colheu Y".
+  function vinculos(tl) {
+    var atos = {}, out = [];
+    var i, e;
+    for (i = 0; i < tl.length; i++) { e = tl[i]; if (e.type === 'ato') atos[e.id] = { ato: e, cons: [] }; }
+    for (i = 0; i < tl.length; i++) {
+      e = tl[i];
+      if (e.type !== 'consequencia') continue;
+      var alvo = e.ato || (Array.isArray(e.refs) && e.refs[0]);
+      if (alvo && atos[alvo]) atos[alvo].cons.push(e);
+    }
+    for (var k in atos) if (Object.prototype.hasOwnProperty.call(atos, k)) out.push(atos[k]);
+    return out;
+  }
+
+  function frase(e) {
+    var t = (e && typeof e.titulo === 'string' && e.titulo) ? e.titulo : 'um gesto sem nome';
+    return t.charAt(0).toLowerCase() + t.slice(1);
+  }
+
+  function medida(e) {
+    var m = e && e.efeitoMedido;
+    if (!m || typeof m !== 'object') return '';
+    var partes = [];
+    for (var k in m) {
+      if (!Object.prototype.hasOwnProperty.call(m, k)) continue;
+      var v = m[k];
+      if (typeof v === 'number' && isFinite(v)) partes.push(k + ' ' + (v > 0 ? '+' : '') + (Math.round(v * 100) / 100));
+      else if (typeof v === 'string' && v) partes.push(v);
+      if (partes.length >= 2) break;
+    }
+    return partes.length ? ' (' + partes.join(', ') + ')' : '';
+  }
+
+  // gerar() — 300 a 500 palavras, tom mítico-poético, sem placeholder algum.
+  function gerar() {
+    var st = O.state;
+    var tl = O.Chron.timeline();
+    var d = desfecho();
+    var g = st.geo || {};
+    var terra = num(g.landTiles), floresta = num(g.forestTiles);
+    var pol = poluicaoMedia(), ruinas = contaRuinas();
+    var anos = num(st.year), pop = Math.round(num(st.sim.pop));
+
+    var p = [];
+    p.push('A Casa levou ' + anos + (anos === 1 ? ' ano' : ' anos') +
+      ' para chegar até aqui. O que segue não é louvor nem sentença: é o que ficou escrito.');
+
+    // Por era
+    var porEra = {}, i, e;
+    for (i = 0; i < tl.length; i++) {
+      e = tl[i];
+      var era = num(e.era);
+      (porEra[era] = porEra[era] || []).push(e);
+    }
+    var erasVistas = Object.keys(porEra).sort(function (a, b) { return a - b; });
+    for (i = 0; i < erasVistas.length; i++) {
+      var idx = num(erasVistas[i]);
+      var nome = ERAS[idx] || ('Era ' + idx);
+      var lista = porEra[erasVistas[i]];
+      var marcos = lista.filter(function (x) { return x.type === 'ato' || x.type === 'marco'; });
+      var males = lista.filter(function (x) { return x.type === 'desastre'; });
+      var linha = 'Na ' + nome + ', a Casa registrou ' + lista.length +
+        (lista.length === 1 ? ' feito' : ' feitos') + '.';
+      if (marcos.length) linha += ' Decidiu por ' + frase(marcos[0]) + medida(marcos[0]) + '.';
+      if (males.length) linha += ' E aprendeu, quando ' + frase(males[0]) + medida(males[0]) + '.';
+      p.push(linha);
+    }
+    if (!erasVistas.length) {
+      p.push('Nenhuma era chegou a deixar marca: a Casa mal teve tempo de aprender o próprio nome, ' +
+        'e o silêncio também é um registro.');
+    }
+
+    // Vínculos ato -> consequência (D22): a espinha dorsal do epílogo
+    var vs = vinculos(tl).filter(function (v) { return v.cons.length; });
+    if (vs.length) {
+      for (i = 0; i < Math.min(3, vs.length); i++) {
+        p.push('Quando a Casa escolheu ' + frase(vs[i].ato) + ', não sabia que colheria ' +
+          frase(vs[i].cons[0]) + medida(vs[i].cons[0]) + '. Toda lei é uma promessa feita ao escuro.');
+      }
+    } else {
+      p.push('Nenhuma decisão chegou a cobrar seu preço por inteiro — a Casa foi poupada ' +
+        'de ver o fim dos próprios gestos, o que não é o mesmo que ter acertado.');
+    }
+
+    // Fecho material
+    var fecho = 'Ao fim, restam ' + terra + ' tiles de terra, ' + floresta +
+      ' ainda de floresta — ' + pct(floresta, terra) + '% do que a Casa pisou.';
+    fecho += ' A poluição média assentou em ' + (Math.round(pol * 1000) / 1000) + '.';
+    fecho += ruinas > 0
+      ? ' E ' + ruinas + (ruinas === 1 ? ' ruína permanece' : ' ruínas permanecem') +
+        ', que o tempo não desfaz e a próxima Casa herdará.'
+      : ' Nenhuma ruína ficou: o que foi levantado seguiu de pé.';
+    p.push(fecho);
+
+    p.push(pop > 0
+      ? 'Ficaram ' + pop + (pop === 1 ? ' pessoa' : ' pessoas') + ' sobre este chão. ' +
+        'A ilha é finita, e foi ela quem julgou.'
+      : 'Não ficou ninguém. A ilha é finita, e foi ela quem julgou.');
+
+    p.push('— ' + d.titulo + ' —');
+
+    var texto = p.join('\n\n');
+    // O aceite exige que NENHUM placeholder vaze, inclusive no degenerado.
+    texto = texto.replace(/undefined|NaN|\[object Object\]|\{\{[^}]*\}\}/g, 'o que não se soube');
+
+    // Piso de 300 palavras sem inventar fato: a Casa fala do que não houve.
+    // O enchimento é dimensionado pela NECESSIDADE, não por um bloco fixo —
+    // um parágrafo único de tamanho chutado deixava o texto em 234 palavras.
+    var i2 = 0;
+    while (conta(texto) < 300 && i2 < ENCHIMENTO.length) texto += '\n\n' + ENCHIMENTO[i2++];
+
+    // Teto de 500: parágrafos do meio saem primeiro, preservando a abertura e
+    // o fecho material, que são os que carregam número real.
+    var ps = texto.split('\n\n');
+    while (conta(ps.join('\n\n')) > 500 && ps.length > 4) ps.splice(Math.floor(ps.length / 2), 1);
+    texto = ps.join('\n\n');
+
+    return texto;
+  }
+
+  function palavras() { return conta(gerar()); }
+
+  O.Epilogue = { gerar: gerar, desfecho: desfecho, palavras: palavras };
+})(window);
+/* ===== OIKOS S11 EPILOGUE — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S12 UI — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // LACUNA: a seção 4.2 lista o que um módulo pode consumir — consts, rng,
+  // makeRng, state, bus, Mods, Chron, Elliptic — e NÃO
+  // lista Sim, Eras, Border, Render nem Worldgen. Mas a S12 existe para
+  // orquestrar exatamente esses: a toolbar planta por Sim.place, a Constituição
+  // adota por Eras.adopt, o decreto chama Border.decretar. Sigo a leitura de
+  // que a camada de apresentação pode consumi-los — a carta já trata a S12 como
+  // especial ao abrir a exceção de DOM —, mas isso é EXTENSÃO da seção 4.2 e
+  // precisa de ratificação do dono.
+
+  // LACUNA: a carta pede "toolbar por era", mas o catálogo do S7 (BUILDINGS)
+  // não tem campo de era — os cinco são da Era 1. Até existir esse campo, a
+  // toolbar mostra o catálogo inteiro e o rótulo da era vem de Eras.ERAS.
+
+  var TERRENOS = ['oceano', 'água doce', 'areia', 'grama', 'solo fértil',
+                  'floresta', 'pedra', 'montanha'];
+  var RECURSOS = [null, 'caça', 'peixe', 'cobre', 'ferro', 'carvão'];
+
+  var toasts = [];         // fila volátil; a S12 é a única a lê-la
+  var decisao = null;      // decisão aberta, enquanto o modal estiver de pé
+  var raiz = null, elTop = null, elBarra = null, elTip = null, elToast = null, elModal = null;
+  var elPainel = null;                   // EMENDA v1.15 D47: Crônicas e Constituição
+
+  function temDOM() {
+    return typeof document !== 'undefined' && typeof document.createElement === 'function';
+  }
+  function nome(b) { return b && b.nome ? b.nome : '—'; }
+
+  // ---------------------------------------------------------------------
+  // Lógica pura — testável sem browser (carta 4.9a).
+  // ---------------------------------------------------------------------
+  function ferramentasDaEra(era) {
+    var cat = (O.Sim && O.Sim.BUILDINGS) ? O.Sim.BUILDINGS : [];
+    var e = (era === undefined) ? O.state.era : era;
+    // sem campo de era no catálogo, tudo está disponível — ver LACUNA acima
+    return cat.slice(0, 6).map(function (b, i) {
+      return { tecla: String(i + 1), id: b.id, nome: b.nome, custo: b.custo, era: e };
+    });
+  }
+
+  function textoTooltip(x, y) {
+    var M = O.consts.MAP;
+    if (!(x >= 0 && y >= 0 && x < M && y < M) || Math.floor(x) !== x || Math.floor(y) !== y) {
+      return 'fora da ilha';
+    }
+    var i = y * M + x, t = O.state.tiles;
+    var partes = [TERRENOS[t.terrain[i]] || 'terreno ignoto'];
+    if (t.resource[i] && RECURSOS[t.resource[i]]) partes.push(RECURSOS[t.resource[i]]);
+    if (t.building[i]) {
+      var r = (O.Decay && O.Decay.RUINA) || 200;
+      partes.push(t.building[i] === r ? 'ruína' : 'construção');
+    }
+    partes.push(t.owner[i] ? 'dentro da fronteira' : 'fora da fronteira');
+    var pol = t.pollution[i];
+    if (pol > 0.01) partes.push('poluição ' + (Math.round(pol * 100) / 100));
+    return '(' + x + ',' + y + ') ' + partes.join(' · ');
+  }
+
+  function textoConstituicao() {
+    if (!O.Eras) return [];
+    return O.Eras.vigentes().map(function (v) {
+      var custo = O.Eras.custoReforma(v.id);
+      var inst = null, todas = O.Eras.INSTITUTIONS;
+      for (var i = 0; i < todas.length; i++) if (todas[i].id === v.id) inst = todas[i];
+      return {
+        id: v.id, titulo: inst ? inst.titulo : v.id, desde: v.yearAdopted,
+        custoReforma: isFinite(custo) ? Math.round(custo * 100) / 100 : null
+      };
+    });
+  }
+
+  function toast(texto, tipo) {
+    var t = { texto: String(texto), tipo: tipo || 'aviso', ano: O.state.year };
+    toasts.push(t);
+    if (toasts.length > 6) toasts.shift();
+    pintarToasts();
+    return t;
+  }
+  function filaToasts() { return toasts.slice(); }
+
+  // EMENDA viva da D46: a S12 é dona do resume. O S8 pausa ao abrir a decisão
+  // e não retoma; quem devolve o loop ao jogo é este fechamento.
+  function fecharDecisao(escolhaId) {
+    var adotou = null;
+    if (escolhaId && O.Eras) adotou = O.Eras.adopt(escolhaId);
+    decisao = null;
+    if (elModal) elModal.style.display = 'none';
+    O.loop.resume();                       // 5.7: único mutador de state.paused
+    O.bus.emit('decision:closed', { porUI: true, adotada: adotou ? adotou.id : null });
+    return adotou;
+  }
+  function decisaoAberta() { return decisao; }
+
+  // ---------------------------------------------------------------------
+  // DOM — a S12 é uma das duas exceções autorizadas (seção 4.3).
+  // ---------------------------------------------------------------------
+  function el(tag, cls, texto) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (texto !== undefined) n.textContent = texto;
+    return n;
+  }
+
+  function montar() {
+    if (!temDOM() || raiz) return raiz;
+    var estilo = el('style');
+    estilo.textContent =
+      '.oikos-ui{position:fixed;inset:0;pointer-events:none;font:12px/1.4 ui-monospace,Consolas,monospace;color:#e8e2d4}' +
+      '.oikos-ui *{box-sizing:border-box}' +
+      '.ok-top{position:absolute;top:0;left:0;right:0;height:30px;display:flex;gap:18px;align-items:center;' +
+        'padding:0 12px;background:#232016ee;border-bottom:1px solid #4a452f;pointer-events:auto}' +
+      '.ok-barra{position:absolute;left:0;bottom:0;right:0;display:flex;gap:6px;padding:8px 12px;' +
+        'background:#232016ee;border-top:1px solid #4a452f;pointer-events:auto}' +
+      '.ok-bt{padding:5px 10px;background:#3a3524;border:1px solid #5c5638;color:#e8e2d4;cursor:pointer}' +
+      '.ok-bt[aria-pressed="true"]{background:#6d7a3a;border-color:#93a352}' +
+      '.ok-bt:focus{outline:2px solid #93a352}' +
+      '.ok-tip{position:absolute;padding:4px 8px;background:#1a1810ee;border:1px solid #4a452f;' +
+        'transform:translate(12px,12px);max-width:280px}' +
+      '.ok-toasts{position:absolute;right:12px;top:40px;display:flex;flex-direction:column;gap:5px;max-width:300px}' +
+      '.ok-toast{padding:5px 9px;background:#2c2718ee;border-left:3px solid #93a352}' +
+      '.ok-toast.recusa{border-left-color:#b4553a}' +
+      '.ok-modal{position:absolute;inset:0;display:none;align-items:center;justify-content:center;' +
+        'background:#0b0a06cc;pointer-events:auto}' +
+      '.ok-carta{max-width:620px;padding:20px;background:#232016;border:1px solid #5c5638}' +
+      '.ok-carta h2{margin:0 0 8px;font-size:15px;color:#cbbf87}' +
+      '.ok-op{display:block;width:100%;text-align:left;margin-top:8px;padding:9px;' +
+        'background:#2c2718;border:1px solid #5c5638;color:#e8e2d4;cursor:pointer}' +
+      /* EMENDA v1.15 D47 */
+      '.ok-painel{position:absolute;left:12px;top:40px;max-width:360px;max-height:60vh;' +
+        'overflow:auto;padding:10px 12px;background:#232016ee;border:1px solid #4a452f;' +
+        'white-space:pre-wrap;pointer-events:auto}';
+    document.head.appendChild(estilo);
+
+    raiz = el('div', 'oikos-ui');
+    elTop = el('div', 'ok-top');
+    elBarra = el('div', 'ok-barra');
+    elTip = el('div', 'ok-tip'); elTip.style.display = 'none';
+    elToast = el('div', 'ok-toasts');
+    elModal = el('div', 'ok-modal');
+    raiz.appendChild(elTop); raiz.appendChild(elBarra);
+    raiz.appendChild(elTip); raiz.appendChild(elToast); raiz.appendChild(elModal);
+    elPainel = el('div', 'ok-painel');                      // EMENDA v1.15 D47
+    elPainel.style.display = 'none';
+    raiz.appendChild(elPainel);
+    document.body.appendChild(raiz);
+
+    montarBarra();
+    ligarTeclado();
+    ligarCanvas();                                          // EMENDA v1.15 D47
+    return raiz;
+  }
+
+  function montarBarra() {
+    elBarra.textContent = '';
+    var fs = ferramentasDaEra();
+    for (var i = 0; i < fs.length; i++) (function (f) {
+      var b = el('button', 'ok-bt', f.tecla + ' · ' + f.nome);
+      b.setAttribute('aria-pressed', 'false');
+      b.onclick = function () { selecionar(f.id); };
+      elBarra.appendChild(b);
+    })(fs[i]);
+  }
+
+  function selecionar(id) {
+    O.state.tool = (O.state.tool === id) ? null : id;
+    if (!elBarra) return;
+    var fs = ferramentasDaEra(), bs = elBarra.children;
+    for (var i = 0; i < bs.length && i < fs.length; i++) {
+      bs[i].setAttribute('aria-pressed', String(fs[i].id === O.state.tool));
+    }
+  }
+
+  // EMENDA v1.15 D47: a ferramenta selecionada não fazia nada. A barra e as
+  // hotkeys gravavam state.tool, e nenhum clique agia sobre isso — a UI
+  // parecia completa e não plantava um edifício.
+  // Executável sem DOM, para o harness provar a regra headless.
+  function executarFerramenta(x, y) {
+    var tool = O.state.tool;
+    if (tool === null || tool === undefined) return { ok: false, motivo: 'sem ferramenta' };
+    if (tool === 'decreto') {
+      if (!O.Border) return { ok: false, motivo: 'sem fronteira' };
+      var custo = O.Border.custoDecreto(x, y);
+      var okD = O.Border.decretar(x, y);
+      return okD ? { ok: true, tipo: 'decreto', custo: custo }
+                 : { ok: false, motivo: 'decreto recusado' };
+    }
+    if (!O.Sim) return { ok: false, motivo: 'sem simulação' };
+    var v = O.Sim.canBuild(tool, x, y);
+    if (!v.ok) { toast('Aqui não: ' + v.motivo, 'recusa'); return { ok: false, motivo: v.motivo }; }
+    var b = O.Sim.place(tool, x, y);
+    return b ? { ok: true, tipo: 'obra', nome: b.nome } : { ok: false, motivo: 'recusado' };
+  }
+
+  // O canvas é do S3, que usa mousedown/mousemove/mouseup para arrastar. Um
+  // clique após arrasto não pode virar construção, então só age se o ponteiro
+  // praticamente não andou entre descer e subir.
+  function ligarCanvas() {
+    var cv = document.getElementById('oikos');
+    if (!cv || !cv.addEventListener) return false;
+    var px = 0, py = 0;
+    cv.addEventListener('mousedown', function (ev) { px = ev.clientX; py = ev.clientY; });
+    cv.addEventListener('click', function (ev) {
+      if (Math.abs(ev.clientX - px) > 4 || Math.abs(ev.clientY - py) > 4) return;  // foi arrasto
+      var h = O.state.hover;
+      if (!h) return;
+      executarFerramenta(h.x, h.y);
+    });
+    return true;
+  }
+
+  // EMENDA v1.15 D47: os painéis de Crônicas e Constituição constam da spec
+  // como entregáveis; existiam só como função lógica.
+  function pintarPainel(qual) {
+    if (!elPainel) return '';
+    var linhas = [];
+    if (qual === 'cronicas') {
+      var tl = O.Chron.timeline().slice(-14);
+      linhas.push('CRÔNICAS');
+      for (var i = 0; i < tl.length; i++) {
+        linhas.push('ano ' + tl[i].year + ' · ' + (tl[i].titulo || tl[i].type));
+      }
+      if (!tl.length) linhas.push('A Casa ainda não tem história.');
+    } else {
+      linhas.push('CONSTITUIÇÃO');
+      var cs = textoConstituicao();
+      for (var j = 0; j < cs.length; j++) {
+        linhas.push(cs[j].titulo + ' · desde o ano ' + cs[j].desde +
+          ' · reforma custa ' + (cs[j].custoReforma === null ? '—' : cs[j].custoReforma));
+      }
+      if (!cs.length) linhas.push('Nenhuma lei foi promulgada.');
+    }
+    elPainel.textContent = linhas.join('\n');
+    return elPainel.textContent;
+  }
+
+  var painelAberto = null;
+  function alternarPainel(qual) {
+    painelAberto = (painelAberto === qual) ? null : qual;
+    if (elPainel) elPainel.style.display = painelAberto ? 'block' : 'none';
+    if (painelAberto) pintarPainel(painelAberto);
+    return painelAberto;
+  }
+
+  function ligarTeclado() {
+    global.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') {
+        if (decisao) return;                        // o modal exige escolha
+        O.state.tool = null; selecionar(null);
+        return;
+      }
+      // EMENDA v1.15 D47: painéis por tecla, e o decreto como ferramenta fora
+      // da barra — assim os índices 1..6 seguem casando com o catálogo do S7.
+      var k = String(ev.key).toLowerCase();
+      if (k === 'c') { alternarPainel('cronicas'); return; }
+      if (k === 'k') { alternarPainel('constituicao'); return; }
+      if (k === 'd') { selecionar('decreto'); return; }
+      var n = parseInt(ev.key, 10);
+      if (n >= 1 && n <= 6) {
+        var fs = ferramentasDaEra();
+        if (fs[n - 1]) selecionar(fs[n - 1].id);
+      }
+    });
+  }
+
+  function pintarToasts() {
+    if (!elToast) return;
+    elToast.textContent = '';
+    for (var i = 0; i < toasts.length; i++) {
+      elToast.appendChild(el('div', 'ok-toast ' + toasts[i].tipo, toasts[i].texto));
+    }
+  }
+
+  function abrirModal(p) {
+    decisao = p;
+    if (!elModal) return;
+    elModal.textContent = '';
+    var carta = el('div', 'ok-carta');
+    var era = (O.Eras && O.Eras.ERAS[p.era]) ? O.Eras.ERAS[p.era].nome : ('Era ' + p.era);
+    carta.appendChild(el('h2', null, 'A Casa chega à ' + era));
+    var c = p.contexto || {};
+    carta.appendChild(el('p', null,
+      'Restam ' + (c.forestTiles || 0) + ' tiles de floresta em ' + (c.landTiles || 0) +
+      ' de terra, e ' + Math.round(c.pop || 0) + ' pessoas esperam a decisão.'));
+    for (var i = 0; i < p.opcoes.length; i++) (function (op) {
+      var b = el('button', 'ok-op');
+      b.appendChild(el('strong', null, op.titulo));
+      b.appendChild(el('div', null, op.prosa));
+      b.appendChild(el('div', null, '↑ ' + op.pros + '   ↓ ' + op.cons));
+      b.onclick = function () { fecharDecisao(op.id); };
+      carta.appendChild(b);
+    })(p.opcoes[i]);
+    elModal.appendChild(carta);
+    elModal.style.display = 'flex';
+    var pb = elModal.querySelector('.ok-op');
+    if (pb && pb.focus) pb.focus();
+  }
+
+  // draw: topbar e tooltip acompanham o estado a cada frame (leitor puro).
+  function pintar() {
+    if (!raiz) return;
+    var st = O.state;
+    elTop.textContent = '';
+    var eraNome = (O.Eras && O.Eras.ERAS[st.era]) ? O.Eras.ERAS[st.era].nome : ('Era ' + st.era);
+    elTop.appendChild(el('span', null, 'ano ' + st.year));
+    elTop.appendChild(el('span', null, eraNome));
+    elTop.appendChild(el('span', null, 'pop ' + Math.round(st.sim.pop)));
+    elTop.appendChild(el('span', null, 'comida ' + Math.round(st.res.food)));
+    elTop.appendChild(el('span', null, 'madeira ' + Math.round(st.res.wood)));
+    elTop.appendChild(el('span', null, 'pedra ' + Math.round(st.res.stone)));
+    if (st.clock && st.clock.decayStage) {
+      elTop.appendChild(el('span', null, 'decadência ' + st.clock.decayStage));
+    }
+    if (st.hover) {
+      elTip.style.display = 'block';
+      elTip.textContent = textoTooltip(st.hover.x, st.hover.y);
+    } else {
+      elTip.style.display = 'none';
+    }
+  }
+
+  O.bus.on('decision:open', function (p) { if (temDOM()) abrirModal(p); else decisao = p; });
+  O.bus.on('ui:toast', function (p) { toast(p && p.texto ? p.texto : String(p), p && p.tipo); });
+  O.bus.on('colony:collapsed', function (p) {
+    toast('A Casa se esvaziou no ano ' + (p && p.ano) + '. Ficaram as ruínas.', 'recusa');
+  });
+
+  O.use('UI', { init: montar, draw: pintar });
+
+  O.UI = {
+    montar: montar, ferramentasDaEra: ferramentasDaEra, textoTooltip: textoTooltip,
+    textoConstituicao: textoConstituicao, toast: toast, filaToasts: filaToasts,
+    fecharDecisao: fecharDecisao, decisaoAberta: decisaoAberta, selecionar: selecionar,
+    // EMENDA v1.15 D47: exportadas para que a regra do clique e a dos painéis
+    // sejam prováveis SEM browser. Fossem privadas, o conserto do achado alta
+    // ficaria coberto só por critério [browser], que roda em SKIP sob Node.
+    executarFerramenta: executarFerramenta, alternarPainel: alternarPainel
+  };
+})(window);
+/* ===== OIKOS S12 UI — FIM ===== */
+</script>
+<script>
 // Arranque mínimo: dimensiona o canvas à janela, gera a ilha e sobe o loop.
 // Guardado para o NAVEGADOR: sob Node (smoke do integrador) não há canvas nem
 // addEventListener, e start() agendaria rAF para sempre, travando o processo.

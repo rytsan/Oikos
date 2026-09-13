@@ -94,4 +94,30 @@ assert.ok(ganhos > 0, 'fronteira nao expandiu');
 const dentroFront = OIKOS.Border.isInside(Math.round(OIKOS.Border.centro().x), Math.round(OIKOS.Border.centro().y));
 console.log('centro dentro da fronteira:', dentroFront);
 
+// S10 integrado: relogio, estagio e id de ruina.
+assert.ok(OIKOS.Decay && typeof OIKOS.Decay.passo === 'function', 'Decay ausente');
+assert.strictEqual(OIKOS.Decay.RUINA, 200, 'id de ruina');
+assert.strictEqual(OIKOS.Decay.estagio(), 0, 'partida saudavel nao esta em decadencia');
+
+// S11 integrado: epilogo dentro da faixa e sem placeholder.
+assert.ok(OIKOS.Epilogue && typeof OIKOS.Epilogue.gerar === 'function', 'Epilogue ausente');
+const epi = OIKOS.Epilogue.gerar();
+const nPal = epi.trim().split(/\s+/).length;
+console.log('epilogo:', nPal, 'palavras ·', OIKOS.Epilogue.desfecho().id);
+assert.ok(nPal >= 300 && nPal <= 500, 'epilogo fora da faixa de 300 a 500');
+assert.ok(!/undefined|NaN|\[object Object\]|\{\{/.test(epi), 'placeholder vazou no epilogo');
+
+// S12 integrado: a ferramenta selecionada efetiva no clique (D47), e a
+// fronteira criada acima faz o canBuild do S7 aplicar a D44.
+assert.ok(OIKOS.UI && typeof OIKOS.UI.executarFerramenta === 'function', 'UI ausente');
+const ferramentas = OIKOS.UI.ferramentasDaEra();
+assert.strictEqual(ferramentas.length, 5, 'toolbar com cinco ferramentas');
+const c = OIKOS.Border.centro();
+const cx = Math.round(c.x), cy = Math.round(c.y);
+OIKOS.UI.selecionar(ferramentas[0].id);
+const efeito = OIKOS.UI.executarFerramenta(cx, cy);
+console.log('clique no centro da fronteira:', JSON.stringify(efeito));
+assert.ok(efeito.ok || efeito.motivo === 'ocupado', 'ferramenta nao efetivou: ' + efeito.motivo);
+assert.strictEqual(OIKOS.UI.alternarPainel('cronicas'), 'cronicas', 'painel nao abriu');
+
 console.log('SMOKE OK');
