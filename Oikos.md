@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.9 · Estado: rodada 2 auditada e integrada (S1+S2+S4+S6 no index.html, smoke OK); rodada 3 (S3+S5) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.10 · Estado: rodada 2 auditada e integrada (S1+S2+S4+S6 no index.html, smoke OK); rodada 3 (S3+S5) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -195,6 +195,8 @@ D33	S3: visibleTiles devolve Int16Array e paintOrder troca índices y*MAP+x, nã
 D34	S5: em get(target, snapshot?) a base é snapshot[target] quando número finito, e 0 quando não houver snapshot ou a chave; o snapshot NUNCA é escrito	o aceite exige "motor vazio devolve o valor base", mas a assinatura não traz parâmetro de base; ler do próprio snapshot cumpre o aceite sem inventar parâmetro e sem mudar a assinatura que a S7 vai consumir
 D35	Emenda S3 na extração: tile de oceano com pollution > 0 deixa de ser pulado no desenho	a spec pede cor da água interpolada por pollution[]; pular terrain 0 confiando no retângulo de fundo deixava oceano poluído com cor de mar limpo (achado 1 da auditoria, severidade média)
 D36	Emenda S3 na extração: a centralização da câmera volta a valer quando o kernel reatribui o estado (reset/load)	a flag de centralização vivia no módulo e sobrevivia ao reset, deixando a câmera fora de lugar na ilha nova (achado 2 da auditoria)
+D37	S5: a closure de Mods ZERA quando o kernel reatribui o estado (reset/load), pelo mesmo gatilho de identidade que a S6 usa; SUPERSEDE a // DECISÃO: em contrário registrada na devolução	a D28 exige que fontes persistentes re-registrem após load — cláusula que só faz sentido se o motor começa vazio, e a leitura anterior a tornava letra morta; sem zerar, instituições de uma partida anterior sobrevivem no save carregado e alteram seus números em silêncio, sem que nada as remova (achado 1 da auditoria do S5, severidade alta)
+D38	Contrato de emissão de mods:changed: payload sempre { target }; re-push que troca de alvo emite para o alvo ANTIGO e para o novo; removeBySource emite um evento por alvo afetado	forma única de payload poupa o ouvinte de tratar dois formatos; sem evento no alvo antigo, quem mantém cache daquele alvo nunca fica sabendo que mudou (achados 2 e 4 da auditoria do S5)
 12. Status
 Módulo	Spec	Delegado	Auditado	Integrado
 S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html (sessão #1)
@@ -220,8 +222,9 @@ v1.4	Consolidação: carta sincronizada com o código auditado; specs S2/S4/S6 a
 v1.5	Pós-auditoria rodada 2: D19–D28; aceites S4/S2 corrigidos; spec S5 consolidada com contrato de Mods (D28); schema canônico de crônica (D23); emendas na extração marcadas // EMENDA v1.5 D{n}:; D-variabilidade pendente documentada
 v1.6	Pós-integração rodada 2: D29 (veios restritos a PEDRA e MONTANHA, supersede D27) e D30 (D-variabilidade ratificada — terra [1010, 1350], floresta [12%, 26%], label 'world' no contrato de streams da S2); seção 6 (spec S2) e seção 12 sincronizadas
 v1.7	Seção 14 — versionamento da carta com critérios de aceite: incremento de 0,1 por lote aceito, o que incrementa e o que não, e a regra de remedição (14.5 item 7)
-v1.9	Pós-auditoria S3 (rodada 3): D33 (Int16Array/índices e tabela de isZoneable), D34 (base do get da S5), D35 e D36 (emendas S3 na extração — poluição em oceano e centralização da câmera); seção 4 item 9c passa a exigir o sufixo de SKIP só quando y > 0
 v1.8	Contratos de harness: seção 4 item 9 (execução sob Node, funções puras sem canvas, SKIP restrito a [browser], linha de resumo "x/x PASS (+y SKIP [browser])"); seção 8.3 delegação oficial via monta-delegacao.js; seção 9 nomes canônicos dos marcadores; D31 e D32
+v1.9	Pós-auditoria S3 (rodada 3): D33 (Int16Array/índices e tabela de isZoneable), D34 (base do get da S5), D35 e D36 (emendas S3 na extração — poluição em oceano e centralização da câmera); seção 4 item 9c passa a exigir o sufixo de SKIP só quando y > 0
+v1.10	Pós-auditoria S5 (rodada 3): D37 (closure de Mods zera na troca de identidade do estado, supersedendo decisão local da devolução) e D38 (contrato de emissão de mods:changed); emendas S5 aplicadas na extração
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
