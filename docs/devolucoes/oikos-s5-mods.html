@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>OIKOS S5 — Modificadores · harness de aceite</title>
+<style>
+  body{font:13px/1.45 ui-monospace,Consolas,monospace;background:#14171c;color:#dfe4ea;margin:24px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;margin-top:8px;max-width:1400px}
+  td,th{border:1px solid #39414d;padding:4px 10px;text-align:left;vertical-align:top}
+  th{background:#1e242c}
+  .pass{color:#4ade80;font-weight:bold}
+  .fail{color:#f87171;font-weight:bold}
+  .skip{color:#fbbf24;font-weight:bold}
+  #resumo{margin-top:14px;font-size:14px}
+  .det{color:#8b95a5}
+</style>
+</head>
+<body>
+<h1>OIKOS S5 — Motor de modificadores · harness de aceite</h1>
+<div id="saida">executando…</div>
+<div id="resumo"></div>
+<script>
+/* ===== OIKOS S1 KERNEL — INÍCIO ===== */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Constantes canônicas (CONTRATO entre os 13 módulos). Objeto mutável de
+  // propósito: o integrador/harness pode sobrescrever TICK_MS ou SAVE_KEY
+  // antes de start() e o loop lê os valores a cada uso (regra 5.8).
+  // ---------------------------------------------------------------------
+  var consts = {
+    TILE_W: 64, TILE_H: 32,
+    MAP: 56,
+    TICK_MS: 2000,
+    MAX_TICKS_PER_FRAME: 5,
+    ZOOM_MIN: 0.5, ZOOM_MAX: 2.5,
+    SAVE_KEY: 'oikos_v1',
+    SCHEMA_VERSION: 1
+  };
+
+  // ---------------------------------------------------------------------
+  // RNG determinístico — mulberry32 + derivação por hash xmur3.
+  // NENHUM Math.random em todo o kernel.
+  // ---------------------------------------------------------------------
+  function xmur3(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // makeRng(seed) -> { seed, f(), i(n), pick(arr), child(label) }
+  // DECISÃO: makeRng é exportado — a spec o descreve mas não o lista nas
+  // chaves; os módulos precisam dele para criar streams locais.
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    var next = mulberry32(s);                  // estado interno privado
+    return {
+      seed: s,
+      f: function () { return next(); },
+      i: function (n) { return Math.floor(next() * n); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      // child() deriva da SEED DE CONSTRUÇÃO, nunca do estado corrente: por
+      // isso não consome draws do pai e é estável em qualquer momento.
+      child: function (label) {
+        var h = xmur3(String(label))();
+        return makeRng((s ^ h) >>> 0);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Estado central — schema v1 travado (seção 3 da spec).
+  // ---------------------------------------------------------------------
+  function makeState(seed) {
+    var N = consts.MAP * consts.MAP;
+    return {
+      schemaVersion: consts.SCHEMA_VERSION,
+      seed: seed >>> 0,
+      year: 0, era: 0, paused: false,
+      meters: { knowledge: 0, legitimacy: 50, harmonyAxis: 0 },
+      res: { food: 0, wood: 0, stone: 0, copper: 0, iron: 0, coal: 0, gold: 0 },
+      tiles: {
+        terrain: new Uint8Array(N),
+        resource: new Uint8Array(N),
+        building: new Uint8Array(N),
+        level: new Uint8Array(N),
+        owner: new Uint8Array(N),
+        pollution: new Float32Array(N)
+      },
+      geo: {},
+      pendulums: {
+        main: { u: 0, k: 0.1 }, harvest: { u: 0, k: 0.1 }, economy: { u: 0, k: 0.1 }
+      },
+      institutions: [],
+      chronicle: [],
+      clock: { stagnation: 0, decayStage: 0 },
+      camera: { x: 0, y: 0, zoom: 1 },
+      tool: null, hover: null,
+      sim: { pop: 0, jobs: 0, foodProd: 0, housing: 0, tension: 0 }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Barramento de eventos — pub/sub SÍNCRONO, FIFO por ordem de registro.
+  // Os nomes do dicionário (seção 5) não precisam de declaração prévia: o
+  // bus aceita qualquer string. O kernel só emite 'sim:tick'.
+  // ---------------------------------------------------------------------
+  var handlers = Object.create(null);
+  var bus = {
+    on: function (evt, fn) {
+      var arr = handlers[evt] || (handlers[evt] = []);
+      arr.push(fn);
+      return function off() { var i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+    },
+    emit: function (evt, payload) {
+      var arr = handlers[evt];
+      if (!arr || !arr.length) return;
+      // DECISÃO: itera sobre cópia — on/off durante o emit não corrompe a volta.
+      var snap = arr.slice();
+      for (var i = 0; i < snap.length; i++) {
+        try { snap[i](payload); }
+        catch (e) { console.error('[OIKOS bus] handler de "' + evt + '" lancou:', e); }
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Registro de módulos (regra 5.9).
+  // ---------------------------------------------------------------------
+  var modules = [];
+  var started = false;
+
+  function initModule(m) {
+    if (m.ready) return;
+    m.ready = true;
+    if (!m.init) return;
+    try { m.init(); }
+    catch (e) { console.error('[OIKOS] init("' + m.name + '") lancou:', e); }
+  }
+
+  function use(name, hooks) {
+    hooks = hooks || {};
+    var m = { name: name, init: hooks.init, update: hooks.update, draw: hooks.draw, ready: false };
+    modules.push(m);
+    if (started) initModule(m);                // use() após start(): init imediato
+  }
+
+  // ---------------------------------------------------------------------
+  // Loop — rAF + tick fixo por acumulador.
+  // ---------------------------------------------------------------------
+  var rafId = 0, lastNow = 0, acc = 0;
+
+  function tick() {
+    loop.tickCount++;
+    global.OIKOS.state.year++;                 // year++ ANTES do emit (regra 5.9)
+    // DECISÃO: ordem do tick = year++ · update dos módulos · emit('sim:tick').
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.update) continue;
+      try { m.update(); }
+      catch (e) { console.error('[OIKOS] update("' + m.name + '") lancou:', e); }
+    }
+    bus.emit('sim:tick', { year: global.OIKOS.state.year });
+  }
+
+  function step(now) {
+    rafId = global.requestAnimationFrame(step);
+    var dt = now - lastNow; lastNow = now;
+    loop.frame++;
+
+    if (!global.OIKOS.state.paused) {
+      acc += dt;
+      var TICK = consts.TICK_MS;               // leitura viva (regra 5.8)
+      var cap = consts.MAX_TICKS_PER_FRAME, n = 0;
+      while (acc >= TICK && n < cap) { acc -= TICK; n++; tick(); }
+      if (n >= cap) acc = 0;                   // teto atingido: descarta a dívida
+    } else {
+      acc = 0;                                 // pausa não acumula dívida
+    }
+
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.draw) continue;
+      try { m.draw(dt); }
+      catch (e) { console.error('[OIKOS] draw("' + m.name + '") lancou:', e); }
+    }
+  }
+
+  var loop = {
+    frame: 0,
+    tickCount: 0,
+    start: function () {
+      if (started) return;                     // DECISÃO: start() idempotente
+      started = true;
+      for (var i = 0; i < modules.length; i++) initModule(modules[i]);
+      lastNow = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+      acc = 0;
+      rafId = global.requestAnimationFrame(step);
+    },
+    // Regra 5.7: pause/resume são os ÚNICOS mutadores de state.paused.
+    pause: function () { global.OIKOS.state.paused = true; },
+    resume: function () { global.OIKOS.state.paused = false; acc = 0; },
+    isPaused: function () { return global.OIKOS.state.paused === true; }
+  };
+
+  // ---------------------------------------------------------------------
+  // Persistência — serializador recursivo ciente de TypedArrays.
+  // ---------------------------------------------------------------------
+  var TA = {
+    Int8Array: Int8Array, Uint8Array: Uint8Array, Uint8ClampedArray: Uint8ClampedArray,
+    Int16Array: Int16Array, Uint16Array: Uint16Array,
+    Int32Array: Int32Array, Uint32Array: Uint32Array,
+    Float32Array: Float32Array, Float64Array: Float64Array
+  };
+
+  function enc(v) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      return { __ta: v.constructor.name, v: Array.prototype.slice.call(v) };
+    }
+    if (Array.isArray(v)) return v.map(enc);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = enc(v[k]);
+      return o;
+    }
+    return v;
+  }
+  function dec(v) {
+    if (v && typeof v === 'object' && typeof v.__ta === 'string' && Array.isArray(v.v)) {
+      var C = TA[v.__ta];
+      if (!C) throw new Error('TypedArray desconhecido: ' + v.__ta);
+      return C.from(v.v);
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = dec(v[k]);
+      return o;
+    }
+    return v;
+  }
+
+  function serialize(state) { return JSON.stringify(enc(state)); }
+
+  function deserialize(json) {
+    try {
+      var raw = JSON.parse(json);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.schemaVersion !== consts.SCHEMA_VERSION) return null;   // versão incompatível
+      return dec(raw);
+    } catch (e) { return null; }
+  }
+
+  // LACUNA: a spec exige localStorage, mas alguns navegadores o negam em
+  // file://. Fallback em memória mantém save/load funcionais sem lançar.
+  var memStore = Object.create(null);
+  function store() {
+    try {
+      if (global.localStorage) { global.localStorage.getItem(consts.SAVE_KEY); return global.localStorage; }
+    } catch (e) { /* bloqueado pelo navegador */ }
+    return {
+      getItem: function (k) { return (k in memStore) ? memStore[k] : null; },
+      setItem: function (k, v) { memStore[k] = String(v); }
+    };
+  }
+
+  function save() {
+    try { store().setItem(consts.SAVE_KEY, serialize(global.OIKOS.state)); }
+    catch (e) { console.error('[OIKOS] save falhou:', e); }
+  }
+
+  function load() {
+    var json;
+    try { json = store().getItem(consts.SAVE_KEY); }
+    catch (e) { return false; }
+    if (!json) return false;
+    var st = deserialize(json);
+    if (!st) return false;                       // estado vigente permanece intocado
+    global.OIKOS.state = st;
+    global.OIKOS.rng = makeRng(st.seed);         // regra 5.6: rng recriado da seed
+    acc = 0;
+    loop.pause();                                // regra 5.7: retoma PAUSADO
+    return true;
+  }
+
+  // Regra 5.6: o rng NÃO é serializado. Após load(), os draws do stream
+  // principal recomeçam da seed; o determinismo ESTRUTURAL se preserva
+  // porque cada módulo usa rng.child('<label>'), derivado só da seed.
+  // LACUNA: seed inicial de boot não especificada — constante fixa
+  // (Math.random é proibido).
+  var DEFAULT_SEED = 1337;
+
+  function reset(newSeed) {
+    // LACUNA: reset() sem argumento não foi especificado — reutiliza a seed atual.
+    var s = (newSeed === undefined || newSeed === null)
+      ? (global.OIKOS.state ? global.OIKOS.state.seed : DEFAULT_SEED)
+      : newSeed;
+    global.OIKOS.state = makeState(s);
+    global.OIKOS.rng = makeRng(s);
+    acc = 0;
+  }
+
+  global.OIKOS = {
+    consts: consts,
+    makeRng: makeRng,
+    rng: makeRng(DEFAULT_SEED),
+    state: makeState(DEFAULT_SEED),
+    makeState: makeState,
+    bus: bus,
+    use: use,
+    loop: loop,
+    save: save,
+    load: load,
+    reset: reset,
+    serialize: serialize,
+    deserialize: deserialize
+  };
+})(window);
+/* ===== OIKOS S1 KERNEL — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S5 MODS — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Estado do motor — CLOSURE VOLÁTIL (D28). O schema v1 não tem campo de
+  // mods, então nada aqui é serializado. Fontes persistentes (instituições)
+  // re-registram após load(), via S8.
+  //
+  // DECISÃO: NÃO limpo a closure ao detectar troca de identidade de state
+  // (o gatilho que a S6 usa para reidratar ids). D28 atribui a re-registração
+  // à S8, e re-push por id é idempotente — quem recarrega um save re-empurra
+  // os mesmos ids e substitui no lugar. Limpar aqui duplicaria a
+  // responsabilidade e apagaria mods de fontes que ainda não re-registraram.
+  //
+  // porAlvo: target -> array de mods em ORDEM DE PUSH (a "idade de adoção").
+  // porId:   id -> mod, para o re-push substituir sem duplicar.
+  // ---------------------------------------------------------------------
+  var porAlvo = Object.create(null);
+  var porId = Object.create(null);
+
+  var KINDS = { add: 1, mult: 1 };
+
+  function ehString(v) { return typeof v === 'string' && v.length > 0; }
+  function finito(v) { return typeof v === 'number' && isFinite(v); }
+
+  function listaDe(target) {
+    return porAlvo[target] || (porAlvo[target] = []);
+  }
+
+  function tirarDaLista(m) {
+    var l = porAlvo[m.target];
+    if (!l) return;
+    var i = l.indexOf(m);
+    if (i >= 0) l.splice(i, 1);
+  }
+
+  // ---------------------------------------------------------------------
+  // push — valida, insere ou SUBSTITUI NO LUGAR, emite 'mods:changed'.
+  // Nunca lança; entrada inválida = console.error + null, SEM emitir.
+  // ---------------------------------------------------------------------
+  function push(cfg) {
+    if (!cfg || typeof cfg !== 'object') {
+      console.error('[OIKOS Mods] push inválido (não é objeto):', cfg);
+      return null;
+    }
+    if (!ehString(cfg.id) || !ehString(cfg.source) || !ehString(cfg.target)) {
+      console.error('[OIKOS Mods] push inválido (id/source/target têm de ser strings):', cfg);
+      return null;
+    }
+    if (!KINDS[cfg.kind]) {
+      console.error('[OIKOS Mods] push inválido (kind fora de {add, mult}):', cfg);
+      return null;
+    }
+    var temFn = typeof cfg.fn === 'function';
+    if (!temFn && !finito(cfg.value)) {
+      console.error('[OIKOS Mods] push inválido (value finito OU fn função):', cfg);
+      return null;
+    }
+
+    // DECISÃO: expiresAt não consta da lista de validações da carta. Aceito
+    // qualquer valor; não-finito vale como AUSENTE, ou seja, permanente.
+    var expira = finito(cfg.expiresAt) ? cfg.expiresAt : undefined;
+
+    var velho = porId[cfg.id];
+    if (velho) {
+      // Reforma NÃO reordena precedência: o mod é editado no lugar e mantém
+      // a posição que já ocupava na fila do alvo.
+      // DECISÃO: se o target mudou, não há posição a preservar na lista nova —
+      // sai da antiga e entra no fim da nova.
+      if (velho.target !== cfg.target) {
+        tirarDaLista(velho);
+        velho.target = cfg.target;
+        listaDe(cfg.target).push(velho);
+      }
+      velho.source = cfg.source;
+      velho.kind = cfg.kind;
+      velho.value = temFn ? undefined : Number(cfg.value);
+      velho.fn = temFn ? cfg.fn : undefined;
+      velho.expiresAt = expira;
+      O.bus.emit('mods:changed', { target: velho.target });
+      return velho;
+    }
+
+    var m = {
+      id: cfg.id, source: cfg.source, target: cfg.target, kind: cfg.kind,
+      value: temFn ? undefined : Number(cfg.value),
+      fn: temFn ? cfg.fn : undefined,
+      expiresAt: expira
+    };
+    porId[m.id] = m;
+    listaDe(m.target).push(m);
+    O.bus.emit('mods:changed', { target: m.target });
+    return m;
+  }
+
+  // ---------------------------------------------------------------------
+  // lazy-sweep — expira por ANO DE JOGO, lido vivo de OIKOS.state.year.
+  // Roda dentro do get, sobre a lista do alvo pedido apenas.
+  // ---------------------------------------------------------------------
+  function varrer(lista) {
+    var ano = O.state.year, i, m;
+    for (i = lista.length - 1; i >= 0; i--) {
+      m = lista[i];
+      if (m.expiresAt !== undefined && m.expiresAt <= ano) {
+        lista.splice(i, 1);
+        delete porId[m.id];
+      }
+    }
+  }
+
+  // valor de um mod no momento do get. fn é avaliada A CADA get — é o que
+  // torna as decisões sensíveis a contexto. Retorno não-finito: console.error
+  // e o mod é IGNORADO (não derruba o cálculo inteiro).
+  function valorDe(m, snapshot) {
+    if (!m.fn) return m.value;
+    var v;
+    try { v = m.fn(snapshot); }
+    catch (e) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" lancou:', e);
+      return null;
+    }
+    if (!finito(v)) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" devolveu não-finito:', v);
+      return null;
+    }
+    return v;
+  }
+
+  // ---------------------------------------------------------------------
+  // get(target, snapshot?) — nunca lança, nunca muta a base.
+  //
+  // LACUNA: a carta exige que "motor vazio devolve o valor base", mas a
+  // assinatura get(target, snapshot?) não traz parâmetro de base. Escolho a
+  // leitura mais simples que satisfaz o aceite sem inventar parâmetro: a base
+  // é snapshot[target] quando for número finito, e 0 quando não houver
+  // snapshot ou a chave. O mesmo snapshot vai para fn(snapshot), e o objeto
+  // NUNCA é escrito. Se o dono preferir base explícita, é troca de assinatura
+  // na carta, não aqui.
+  //
+  // Ordem (D28): TODOS os 'add' por idade de adoção, DEPOIS todos os 'mult'
+  // por idade. Duas passadas sobre a mesma lista em ordem de push — sem
+  // alocar arrays intermediários, o que mantém o get dentro do orçamento.
+  // ---------------------------------------------------------------------
+  function get(target, snapshot) {
+    try {
+      var base = (snapshot && finito(snapshot[target])) ? snapshot[target] : 0;
+      if (!ehString(target)) return base;
+      var lista = porAlvo[target];
+      if (!lista || !lista.length) return base;
+
+      varrer(lista);
+
+      var r = base, i, m, v;
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'add') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r += v;
+      }
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'mult') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r *= v;
+      }
+      return finito(r) ? r : base;
+    } catch (e) {
+      console.error('[OIKOS Mods] get("' + target + '") lancou:', e);
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // removeBySource — devolve a contagem removida.
+  // DECISÃO: emite um 'mods:changed' por ALVO distinto afetado, com o mesmo
+  // payload {target} do push. Manter uma única forma de payload vale mais
+  // para quem escuta (invalidar cache por alvo) do que um evento só com
+  // {source}, que obrigaria o ouvinte a tratar dois formatos.
+  // ---------------------------------------------------------------------
+  function removeBySource(sourceId) {
+    if (!ehString(sourceId)) {
+      console.error('[OIKOS Mods] removeBySource inválido (source tem de ser string):', sourceId);
+      return 0;
+    }
+    var n = 0, alvos = [];
+    for (var target in porAlvo) {
+      var lista = porAlvo[target], mexeu = false;
+      for (var i = lista.length - 1; i >= 0; i--) {
+        if (lista[i].source !== sourceId) continue;
+        delete porId[lista[i].id];
+        lista.splice(i, 1);
+        n++; mexeu = true;
+      }
+      if (mexeu) alvos.push(target);
+    }
+    for (var k = 0; k < alvos.length; k++) O.bus.emit('mods:changed', { target: alvos[k] });
+    return n;
+  }
+
+  // Biblioteca pura: sem OIKOS.use(), sem hook de ciclo de vida, sem escrita
+  // em state, zero DOM.
+  O.Mods = { push: push, get: get, removeBySource: removeBySource };
+})(window);
+/* ===== OIKOS S5 MODS — FIM ===== */
+</script>
+<script>
+/* ================== HARNESS S5 — critérios de aceite ================== */
+(function () {
+  'use strict';
+  var O = window.OIKOS, Mods = O.Mods, res = [];
+  function t(id, nome, ok, det) { res.push({ id: id, nome: nome, ok: !!ok, det: det || '', skip: false }); }
+
+  // Conta console.error sem deixar vazar para o relatório.
+  function comErros(fn) {
+    var n = 0, orig = console.error;
+    console.error = function () { n++; };
+    try { fn(); } finally { console.error = orig; }
+    return n;
+  }
+  // Escuta mods:changed durante um trecho.
+  function ouvindo(fn) {
+    var vistos = [];
+    var off = O.bus.on('mods:changed', function (p) { vistos.push(p); });
+    try { fn(); } finally { off(); }
+    return vistos;
+  }
+
+  // ---- 1. motor vazio devolve o valor base -----------------------------
+  (function () {
+    O.reset(1);
+    var comSnap = Mods.get('t1.vazio', { 't1.vazio': 42 });
+    var semSnap = Mods.get('t1.vazio');
+    var semChave = Mods.get('t1.vazio', { outra: 9 });
+    t(1, 'Motor vazio devolve o valor base (snapshot[target]); sem snapshot ou sem a chave, base 0',
+      comSnap === 42 && semSnap === 0 && semChave === 0,
+      'base 42 -> ' + comSnap + ' · sem snapshot -> ' + semSnap + ' · sem a chave -> ' + semChave);
+  })();
+
+  // ---- 2. ordem add -> mult (D28), não ordem de push --------------------
+  (function () {
+    O.reset(2);
+    var alvo = 't2.ordem';
+    Mods.push({ id: 'm2.mult', source: 's2', target: alvo, kind: 'mult', value: 2 });
+    Mods.push({ id: 'm2.add', source: 's2', target: alvo, kind: 'add', value: 5 });
+    var r = Mods.get(alvo, { 't2.ordem': 10 });
+    // D28: (10 + 5) * 2 = 30. Ordem de push seria (10 * 2) + 5 = 25.
+    t(2, 'Ordem D28: TODOS os add antes de TODOS os mult, mesmo com o mult empurrado primeiro',
+      r === 30, 'mult(2) empurrado antes de add(5), base 10 -> ' + r + ' (D28 espera 30; ordem de push daria 25)');
+  })();
+
+  // ---- 3. dois adds somam; dois mults compõem NA ORDEM DE PUSH ---------
+  (function () {
+    O.reset(3);
+    var alvo = 't3.soma';
+    Mods.push({ id: 'm3.a1', source: 's3', target: alvo, kind: 'add', value: 3 });
+    Mods.push({ id: 'm3.a2', source: 's3', target: alvo, kind: 'add', value: 4 });
+    Mods.push({ id: 'm3.m1', source: 's3', target: alvo, kind: 'mult', value: 2 });
+    Mods.push({ id: 'm3.m2', source: 's3', target: alvo, kind: 'mult', value: 3 });
+    var r = Mods.get(alvo, { 't3.soma': 10 });          // (10+3+4)*2*3 = 102
+
+    // Multiplicação é comutativa, então o VALOR não prova ordem: a ordem de
+    // avaliação é observada pelo efeito colateral das fn.
+    var alvo2 = 't3.ordem', vistos = [];
+    Mods.push({ id: 'm3.f1', source: 's3', target: alvo2, kind: 'mult', fn: function () { vistos.push('f1'); return 1; } });
+    Mods.push({ id: 'm3.f2', source: 's3', target: alvo2, kind: 'mult', fn: function () { vistos.push('f2'); return 1; } });
+    Mods.push({ id: 'm3.f0', source: 's3', target: alvo2, kind: 'add', fn: function () { vistos.push('f0'); return 0; } });
+    Mods.get(alvo2, {});
+    t(3, 'Dois adds somam, dois mults compõem; avaliação segue a ordem de push (add antes de mult)',
+      r === 102 && vistos.join(',') === 'f0,f1,f2',
+      '(10+3+4)*2*3 = ' + r + ' · ordem de avaliação = [' + vistos.join(',') + ']');
+  })();
+
+  // ---- 4. fn(snapshot) recalcula a cada get -----------------------------
+  (function () {
+    O.reset(4);
+    var alvo = 't4.fn', chamadas = 0;
+    Mods.push({
+      id: 'm4.ctx', source: 's4', target: alvo, kind: 'add',
+      fn: function (snap) { chamadas++; return (snap && snap.pop) ? snap.pop * 2 : 0; }
+    });
+    var a = Mods.get(alvo, { 't4.fn': 0, pop: 5 });      // 10
+    var b = Mods.get(alvo, { 't4.fn': 0, pop: 8 });      // 16
+    // retorno não-finito: o mod é ignorado, os demais continuam valendo
+    Mods.push({ id: 'm4.ruim', source: 's4', target: alvo, kind: 'add', fn: function () { return NaN; } });
+    var erros = 0, c;
+    erros = comErros(function () { c = Mods.get(alvo, { 't4.fn': 0, pop: 5 }); });
+    t(4, 'fn(snapshot) recalcula a cada get; retorno não-finito é ignorado com console.error, sem derrubar o cálculo',
+      a === 10 && b === 16 && chamadas >= 3 && c === 10 && erros === 1,
+      'pop5 -> ' + a + ' · pop8 -> ' + b + ' · com fn NaN -> ' + c + ' · chamadas=' + chamadas + ' · console.error=' + erros);
+  })();
+
+  // ---- 5. removeBySource remove só a fonte ------------------------------
+  (function () {
+    O.reset(5);
+    Mods.push({ id: 'm5.a', source: 'inst.corveia', target: 't5.x', kind: 'add', value: 5 });
+    Mods.push({ id: 'm5.b', source: 'inst.corveia', target: 't5.y', kind: 'add', value: 7 });
+    Mods.push({ id: 'm5.c', source: 'inst.guildas', target: 't5.x', kind: 'add', value: 100 });
+    var alvos = [], n;
+    alvos = ouvindo(function () { n = Mods.removeBySource('inst.corveia'); });
+    var x = Mods.get('t5.x', { 't5.x': 0 });
+    var y = Mods.get('t5.y', { 't5.y': 0 });
+    var nenhum = Mods.removeBySource('inst.inexistente');
+    var nomes = alvos.map(function (p) { return p.target; }).sort().join(',');
+    t(5, 'removeBySource devolve a contagem, remove só a fonte pedida e emite por alvo afetado',
+      n === 2 && x === 100 && y === 0 && nenhum === 0 && nomes === 't5.x,t5.y',
+      'removidos=' + n + ' · restou x=' + x + ' y=' + y + ' · fonte ausente=' + nenhum + ' · emitiu para [' + nomes + ']');
+  })();
+
+  // ---- 6. expiração por ano de jogo, com lazy-sweep ---------------------
+  (function () {
+    O.reset(6);
+    var alvo = 't6.exp';
+    O.state.year = 5;
+    Mods.push({ id: 'm6.tmp', source: 's6', target: alvo, kind: 'add', value: 50, expiresAt: 10 });
+    Mods.push({ id: 'm6.perm', source: 's6', target: alvo, kind: 'add', value: 1 });
+    var vivo = Mods.get(alvo, { 't6.exp': 0 });          // 51
+    O.state.year = 9;
+    var aindaVivo = Mods.get(alvo, { 't6.exp': 0 });     // 51
+    O.state.year = 10;                                    // expiresAt <= year
+    var expirou = Mods.get(alvo, { 't6.exp': 0 });        // 1
+    O.state.year = 99;
+    var segue = Mods.get(alvo, { 't6.exp': 0 });          // 1
+    t(6, 'Expiração por ano de jogo com lazy-sweep no get: expiresAt <= year some; permanente fica',
+      vivo === 51 && aindaVivo === 51 && expirou === 1 && segue === 1,
+      'ano5=' + vivo + ' ano9=' + aindaVivo + ' ano10=' + expirou + ' ano99=' + segue);
+  })();
+
+  // ---- 7. re-push substitui sem duplicar e MANTÉM precedência ----------
+  (function () {
+    O.reset(7);
+    var alvo = 't7.prec', vistos = [];
+    function marca(n) { return function () { vistos.push(n); return 1; }; }
+    Mods.push({ id: 'm7.A', source: 's7', target: alvo, kind: 'mult', fn: marca('A') });
+    Mods.push({ id: 'm7.B', source: 's7', target: alvo, kind: 'mult', fn: marca('B') });
+    Mods.push({ id: 'm7.C', source: 's7', target: alvo, kind: 'mult', fn: marca('C') });
+    Mods.get(alvo, {});
+    var antes = vistos.join(',');
+
+    vistos.length = 0;
+    Mods.push({ id: 'm7.B', source: 's7', target: alvo, kind: 'mult', fn: marca('B*') });   // reforma
+    Mods.get(alvo, {});
+    var depois = vistos.join(',');
+
+    // valor também confirma que não duplicou
+    var alvo2 = 't7.dup';
+    Mods.push({ id: 'm7.D', source: 's7', target: alvo2, kind: 'add', value: 5 });
+    Mods.push({ id: 'm7.D', source: 's7', target: alvo2, kind: 'add', value: 9 });
+    var v = Mods.get(alvo2, { 't7.dup': 0 });
+    t(7, 'Re-push por id substitui NO LUGAR: não duplica e não reordena a precedência (reforma não fura a fila)',
+      antes === 'A,B,C' && depois === 'A,B*,C' && v === 9,
+      'antes=[' + antes + '] depois da reforma=[' + depois + '] · re-push de value 5->9 devolve ' + v);
+  })();
+
+  // ---- 8. validações rejeitam SEM emitir --------------------------------
+  (function () {
+    O.reset(8);
+    var ruins = [
+      null, undefined, 42, 'texto',
+      { source: 's', target: 't', kind: 'add', value: 1 },                 // sem id
+      { id: 'x', target: 't', kind: 'add', value: 1 },                     // sem source
+      { id: 'x', source: 's', kind: 'add', value: 1 },                     // sem target
+      { id: 1, source: 's', target: 't', kind: 'add', value: 1 },          // id não-string
+      { id: 'x', source: 's', target: 't', kind: 'pow', value: 1 },        // kind inválido
+      { id: 'x', source: 's', target: 't', kind: 'add' },                  // sem value nem fn
+      { id: 'x', source: 's', target: 't', kind: 'add', value: NaN },      // value não-finito
+      { id: 'x', source: 's', target: 't', kind: 'add', value: Infinity },
+      { id: 'x', source: 's', target: 't', kind: 'add', fn: 'nao é função' }
+    ];
+    var rets = [], lancou = false, erros = 0;
+    var emitidos = ouvindo(function () {
+      erros = comErros(function () {
+        try { for (var i = 0; i < ruins.length; i++) rets.push(Mods.push(ruins[i])); }
+        catch (e) { lancou = true; }
+      });
+    });
+    var todosNull = rets.length === ruins.length && rets.every(function (r) { return r === null; });
+    t(8, 'push inválido: devolve null, registra console.error, NÃO lança e NÃO emite mods:changed',
+      todosNull && !lancou && emitidos.length === 0 && erros === ruins.length,
+      'nulls=' + todosNull + ' · lançou=' + lancou + ' · emits=' + emitidos.length + ' · console.error=' + erros + '/' + ruins.length);
+  })();
+
+  // ---- 9. evento com payload correto ------------------------------------
+  (function () {
+    O.reset(9);
+    var vistos = ouvindo(function () {
+      Mods.push({ id: 'm9.a', source: 's9', target: 't9.alvo', kind: 'add', value: 1 });
+      Mods.push({ id: 'm9.a', source: 's9', target: 't9.alvo', kind: 'add', value: 2 });  // re-push também emite
+    });
+    var ok = vistos.length === 2 &&
+      vistos.every(function (p) { return p && p.target === 't9.alvo' && Object.keys(p).join(',') === 'target'; });
+    t(9, "mods:changed emitido no push e no re-push, com payload exatamente { target }",
+      ok, 'emits=' + vistos.length + ' · payload=' + JSON.stringify(vistos[0]));
+  })();
+
+  // ---- 10. 1000 pushes + 1000 gets sem NaN ------------------------------
+  (function () {
+    O.reset(10);
+    var alvos = [], i;
+    for (i = 0; i < 50; i++) alvos.push('t10.alvo' + i);
+    for (i = 0; i < 1000; i++) {
+      Mods.push({
+        id: 'm10.' + i, source: 's10.' + (i % 7), target: alvos[i % alvos.length],
+        kind: (i % 3 === 0) ? 'mult' : 'add',
+        value: (i % 3 === 0) ? 1.001 : (i % 5) - 2
+      });
+    }
+    var ok = true, amostra = 0;
+    for (i = 0; i < 1000; i++) {
+      var v = Mods.get(alvos[i % alvos.length], { pop: i });
+      if (!isFinite(v)) ok = false;
+      if (i === 0) amostra = v;
+    }
+    t(10, '1000 pushes + 1000 gets sem NaN nem infinito', ok,
+      '1000 mods em ' + alvos.length + ' alvos · primeira leitura = ' + amostra.toFixed(4));
+  })();
+
+  // ---- 11. get médio < 5 µs ---------------------------------------------
+  (function () {
+    var alvo = 't10.alvo0', snap = { pop: 3 }, i, acc = 0;
+    for (i = 0; i < 2000; i++) acc += Mods.get(alvo, snap);      // aquece e descarta
+    var t0 = performance.now();
+    for (i = 0; i < 10000; i++) acc += Mods.get(alvo, snap);
+    var us = ((performance.now() - t0) * 1000) / 10000;
+    t(11, 'get médio abaixo de 5 µs (10.000 chamadas, após aquecimento)', us < 5 && isFinite(acc),
+      us.toFixed(3) + ' µs por get');
+  })();
+
+  // ---- 12. biblioteca pura ----------------------------------------------
+  (function () {
+    O.reset(12);
+    var antes = O.serialize(O.state);
+    var lancou = false;
+    try {
+      Mods.push({ id: 'm12', source: 's12', target: 't12', kind: 'add', value: 3 });
+      Mods.get('t12', { t12: 1 });
+      Mods.get(null); Mods.get(undefined); Mods.get(123); Mods.get('t12', null);
+      Mods.removeBySource('s12');
+    } catch (e) { lancou = true; }
+    var depois = O.serialize(O.state);
+    var superficie = Object.keys(O.Mods).sort().join(',') === 'get,push,removeBySource';
+    // base não é mutada
+    Mods.push({ id: 'm12.b', source: 's12b', target: 't12.b', kind: 'add', value: 4 });
+    var snap = { 't12.b': 10, pop: 2 };
+    Mods.get('t12.b', snap);
+    var baseIntacta = snap['t12.b'] === 10 && Object.keys(snap).length === 2;
+    t(12, 'Biblioteca pura: não escreve no state, superfície { push, get, removeBySource }, get nunca lança e nunca muta a base',
+      !lancou && antes === depois && superficie && baseIntacta,
+      'state intocado=' + (antes === depois) + ' · superfície exata=' + superficie +
+      ' · lançou=' + lancou + ' · base intacta=' + baseIntacta);
+  })();
+
+  render(res, 'saida', 'resumo', 'OIKOS S5');
+
+  function render(lista, elTab, elRes, tag) {
+    lista.sort(function (a, b) { return a.id - b.id; });
+    var linhas = lista.map(function (r) {
+      var cls = r.skip ? 'skip' : (r.ok ? 'pass' : 'fail');
+      var txt = r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL');
+      return '<tr><td>' + r.id + '</td><td>' + r.nome + '</td><td class="' + cls + '">' + txt +
+        '</td><td class="det">' + r.det + '</td></tr>';
+    }).join('');
+    document.getElementById(elTab).innerHTML =
+      '<table><tr><th>#</th><th>Critério</th><th>Status</th><th>Detalhe</th></tr>' + linhas + '</table>';
+
+    var exec = lista.filter(function (r) { return !r.skip; });
+    var pass = exec.filter(function (r) { return r.ok; }).length;
+    var nSkip = lista.length - exec.length;
+    var resumo = pass + '/' + exec.length + ' PASS (+' + nSkip + ' SKIP [browser])';
+    document.getElementById(elRes).innerHTML =
+      '<b class="' + (pass === exec.length ? 'pass' : 'fail') + '">' + resumo + '</b>';
+
+    console.table(lista.map(function (r) {
+      return { '#': r.id, criterio: r.nome, status: r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL'), detalhe: r.det };
+    }));
+    console.log(tag + ' harness: ' + resumo);
+  }
+})();
+</script>
+</body>
+</html>
