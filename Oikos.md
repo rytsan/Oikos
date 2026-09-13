@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.10 · Estado: rodadas 2 e 3 auditadas e integradas (S1+S2+S4+S6+S3+S5 no index.html, smoke OK); rodada 4 (S7 Sim) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.11 · Estado: rodadas 2 e 3 auditadas e integradas (S1+S2+S4+S6+S3+S5 no index.html, smoke OK); rodada 4 (S7 Sim) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -130,7 +130,7 @@ Rodada	Specs	Paralelo	Estado
 6	S10 + S11 + S12	sim	—
 7	S13, item a item	sim	—
 8.3 Fluxo por rodada
-Delegar → testar harness localmente → auditar → emendar (aprovado) →integrar → rodar o jogo → próxima rodada. Nunca delegar a rodada seguintecom a anterior não integrada.Delegação oficial: prompts em docs/delegacoes/, montados portools/monta-delegacao.js, que injeta a carta e o kernel VIGENTES no envio.O kernel NUNCA é duplicado em novo local — fontes canônicas: o index.html eas devoluções auditadas (D32).
+Delegar → testar harness localmente → auditar → emendar (aprovado) →integrar → rodar o jogo → próxima rodada. Nunca delegar a rodada seguintecom a anterior não integrada.Delegação oficial: prompts em docs/delegacoes/, montados portools/monta-delegacao.js, que injeta a carta e o RUNTIME INTEGRADO vigentesno envio: o kernel sozinho quando o módulo é independente, e os blocosintegrados inteiros quando o módulo depende de outros já auditados — o S7consome Mods, Chron e a ilha do Worldgen, e seu harness não roda sem eles.Nada é duplicado em novo local: a fonte é sempre o index.html, recortadoentre marcadores na hora do envio (D32).
 
 8.4 Checklist de auditoria
  Sem Math.random, sem DOM fora de S3/S12, sem libs
@@ -225,6 +225,7 @@ v1.7	Seção 14 — versionamento da carta com critérios de aceite: incremento 
 v1.8	Contratos de harness: seção 4 item 9 (execução sob Node, funções puras sem canvas, SKIP restrito a [browser], linha de resumo "x/x PASS (+y SKIP [browser])"); seção 8.3 delegação oficial via monta-delegacao.js; seção 9 nomes canônicos dos marcadores; D31 e D32
 v1.9	Pós-auditoria S3 (rodada 3): D33 (Int16Array/índices e tabela de isZoneable), D34 (base do get da S5), D35 e D36 (emendas S3 na extração — poluição em oceano e centralização da câmera); seção 4 item 9c passa a exigir o sufixo de SKIP só quando y > 0
 v1.10	Pós-auditoria S5 (rodada 3): D37 (closure de Mods zera na troca de identidade do estado, supersedendo decisão local da devolução) e D38 (contrato de emissão de mods:changed); emendas S5 aplicadas na extração
+v1.11	Seção 8.3: o montador injeta o RUNTIME INTEGRADO vigente, não só o kernel — kernel sozinho para módulo independente, blocos integrados inteiros para módulo de dependência serial (caso do S7). Extensão de D32; nada passa a ser duplicado, a fonte segue sendo o index.html lido no envio
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
