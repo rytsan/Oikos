@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.11 · Estado: rodadas 2 e 3 auditadas e integradas (S1+S2+S4+S6+S3+S5 no index.html, smoke OK); rodada 4 (S7 Sim) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.12 · Estado: rodadas 2, 3 e 4 auditadas e integradas (S1+S2+S4+S6+S3+S5+S7 no index.html, smoke OK); rodada 5 (S8 Eras + S9 Fronteira) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -125,8 +125,8 @@ Rodada	Specs	Paralelo	Estado
 1	S1	—	✅ auditado
 2	S2 + S4 + S6	sim	✅ auditado (emendas D21/D22 aplicam-se na extração)
 3	S3 + S5	sim	✅ auditado e integrado (emendas D35/D36 na S3, D37/D38 na S5)
-4	S7	—	delegável (rodada 3 integrada)
-5	S8 + S9	sim	—
+4	S7	—	✅ auditado e integrado (emendas D41/D42/D43 na extração)
+5	S8 + S9	sim	delegável (rodada 4 integrada)
 6	S10 + S11 + S12	sim	—
 7	S13, item a item	sim	—
 8.3 Fluxo por rodada
@@ -197,6 +197,11 @@ D35	Emenda S3 na extração: tile de oceano com pollution > 0 deixa de ser pulad
 D36	Emenda S3 na extração: a centralização da câmera volta a valer quando o kernel reatribui o estado (reset/load)	a flag de centralização vivia no módulo e sobrevivia ao reset, deixando a câmera fora de lugar na ilha nova (achado 2 da auditoria)
 D37	S5: a closure de Mods ZERA quando o kernel reatribui o estado (reset/load), pelo mesmo gatilho de identidade que a S6 usa; SUPERSEDE a // DECISÃO: em contrário registrada na devolução	a D28 exige que fontes persistentes re-registrem após load — cláusula que só faz sentido se o motor começa vazio, e a leitura anterior a tornava letra morta; sem zerar, instituições de uma partida anterior sobrevivem no save carregado e alteram seus números em silêncio, sem que nada as remova (achado 1 da auditoria do S5, severidade alta)
 D38	Contrato de emissão de mods:changed: payload sempre { target }; re-push que troca de alvo emite para o alvo ANTIGO e para o novo; removeBySource emite um evento por alvo afetado	forma única de payload poupa o ouvinte de tratar dois formatos; sem evento no alvo antigo, quem mantém cache daquele alvo nunca fica sabendo que mudou (achados 2 e 4 da auditoria do S5)
+D39	S7: superfície de export { BUILDINGS, canBuild, place, step }, registro em use('Sim', {update}), e os NOVE targets de Mods — foodProd, foodUse, woodProd, stoneProd, housing, jobs, growth, tension, knowledge — como contrato para a S8	a carta não fixava export para o S7, ao contrário de S3 e S5, e a lacuna foi declarada na devolução; os nomes de target já são contrato de fato, porque é contra eles que as instituições da S8 empurram modificadores
+D40	S7: decisões locais ratificadas — a coleta produz comida E madeira, a trilha rende conhecimento, e a crônica de fome é registrada por ARESTA (uma por episódio)	a Era 1 da carta não tem lenhador na lista e sem madeira a árvore de construção trava; a trilha era a única das cinco sem produção óbvia; cem entradas iguais de fome afogariam o epílogo da S11, que agrupa por era e lê efeitoMedido
+D41	Emenda S7 na extração: era:ready é chaveado pela ERA VIGENTE, não por sessão	o sinalizador booleano só era limpo na troca de identidade do estado, então o evento disparava uma vez por sessão e o jogo emperraria na Era 2 — seis eras são a espinha dorsal do design (achado 1 da auditoria do S7). Fica com a S8 consumir ou elevar o conhecimento na transição; sem isso a era seguinte abre no mesmo instante em que a anterior fecha
+D42	Emenda S7 na extração: tile:changed passa a emitir { i, x, y, ... } nos dois pontos de emissão	place() emitia coordenadas e degradar() emitia índice linear; quem escuta não pode ter de tratar dois formatos — mesma razão da D38 para mods:changed (achado 2 da auditoria do S7)
+D43	Emenda S7 na extração: geo.forestTiles e geo.fertileTiles são mantidos VIVOS pela degradação	a spec da S8 dimensiona a carta de decisão por state.geo e a seção 2 exige efeitos sensíveis a contexto; com geo congelado no worldgen, uma decisão da Era 4 se dimensionaria sobre a floresta que existia na Era 1
 12. Status
 Módulo	Spec	Delegado	Auditado	Integrado
 S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html (sessão #1)
@@ -205,7 +210,7 @@ S3 Render	✅ v1.5 + adendo	✅	✅ (código + harness 9/9 +3 SKIP [browser]; pa
 S4 Elíptico	✅ v1.5	✅	✅ (código + harness 11/11 medido; emenda D21)	✅ integrado no index.html (sessão #1)
 S5 Mods	✅ v1.5 + adendo	✅	✅ (código + harness 12/12 +0 SKIP; parecer do auditor #2; D37, D38)	✅ integrado no index.html (sessão #1)
 S6 Crônicas	✅ v1.5	✅	✅ (código + harness 9/9; emenda D22)	✅ integrado no index.html (sessão #1)
-S7 Sim	✅ v1.5	☐	☐	☐
+S7 Sim	✅ v1.5	✅	✅ (código + harness 12/12; parecer do auditor #2; D39–D43)	✅ integrado no index.html (sessão #1)
 S8 Eras	✅ v1.5	☐	☐	☐
 S9 Fronteira	✅ v1.5	☐	☐	☐
 S10 Decadência	✅ v1.5	☐	☐	☐
@@ -226,6 +231,7 @@ v1.8	Contratos de harness: seção 4 item 9 (execução sob Node, funções pura
 v1.9	Pós-auditoria S3 (rodada 3): D33 (Int16Array/índices e tabela de isZoneable), D34 (base do get da S5), D35 e D36 (emendas S3 na extração — poluição em oceano e centralização da câmera); seção 4 item 9c passa a exigir o sufixo de SKIP só quando y > 0
 v1.10	Pós-auditoria S5 (rodada 3): D37 (closure de Mods zera na troca de identidade do estado, supersedendo decisão local da devolução) e D38 (contrato de emissão de mods:changed); emendas S5 aplicadas na extração
 v1.11	Seção 8.3: o montador injeta o RUNTIME INTEGRADO vigente, não só o kernel — kernel sozinho para módulo independente, blocos integrados inteiros para módulo de dependência serial (caso do S7). Extensão de D32; nada passa a ser duplicado, a fonte segue sendo o index.html lido no envio
+v1.12	Pós-auditoria S7 (rodada 4): D39 (export e os nove targets de Mods do S7 como contrato para a S8), D40 (decisões locais ratificadas), e as emendas na extração D41 (era:ready por era, não por sessão), D42 (payload uniforme de tile:changed) e D43 (geo mantido vivo pela degradação)
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
