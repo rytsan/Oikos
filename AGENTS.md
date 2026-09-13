@@ -33,6 +33,11 @@ Regra que decide quase tudo: **conflito código↔carta = defeito do código.**
 Mas registre a possibilidade inversa — já aconteceu de o registro estar
 desatualizado e o código, certo (ver D29).
 
+A carta se versiona pela sua **seção 14**: toda alteração aceita sobe 0,1 e
+ganha linha na seção 13. Cabeçalho `Versão:` que não bate com a última linha da
+seção 13 é achado. Se uma mudança de carta invalidou critério de aceite já
+cumprido, o módulo devia ter voltado para ☐ na seção 12 — conferir.
+
 ## 3. Estado atual
 
 | Módulo | Estado |

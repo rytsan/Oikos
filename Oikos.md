@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.5 · Estado: rodada 2 auditada; integração S1+S2+S4+S6 em andamento (sessão agêntica #1); rodada 3 (S3+S5) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.7 · Estado: rodada 2 auditada e integrada (S1+S2+S4+S6 no index.html, smoke OK); rodada 3 (S3+S5) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -212,6 +212,8 @@ v1.2	D12 (anti-inferência, // LACUNA:); regra de plugins no contrato e no templ
 v1.3	Pós-auditoria S1: D13–D18; 5.10; makeRng público; semântica do tick
 v1.4	Consolidação: carta sincronizada com o código auditado; specs S2/S4/S6 absorvem adendos; 8.5 Anexo A; seção 13
 v1.5	Pós-auditoria rodada 2: D19–D28; aceites S4/S2 corrigidos; spec S5 consolidada com contrato de Mods (D28); schema canônico de crônica (D23); emendas na extração marcadas // EMENDA v1.5 D{n}:; D-variabilidade pendente documentada
+v1.6	Pós-integração rodada 2: D29 (veios restritos a PEDRA e MONTANHA, supersede D27) e D30 (D-variabilidade ratificada — terra [1010, 1350], floresta [12%, 26%], label 'world' no contrato de streams da S2); seção 6 (spec S2) e seção 12 sincronizadas
+v1.7	Seção 14 — versionamento da carta com critérios de aceite: incremento de 0,1 por lote aceito, o que incrementa e o que não, e a regra de remedição (14.5 item 7)
 Changelog v1.4 → v1.5 (para validação rápida):
 
 S1/S2/S4/S6 marcados como implementados e auditados, com as emendas de extração indicadas (D21 na S4, D22 na S6).
@@ -222,3 +224,16 @@ S6: schema canônico da entrada com titulo/prosa (D23); log() não valida string
 Seção 7: nota operacional do teto de escalonamento (~3.59×).
 Seção 9 + 11: emendas aplicam-se na extração, marcadas // EMENDA v1.5 D{n}:; D19–D28 registradas; D-variabilidade documentada como pendente.
 Seção 12: status real — integração em andamento pela sessão agêntica #1; rodada 3 delegável.
+
+14. Versionamento da carta (critérios de aceite)
+14.1 Regra de incremento
+Toda alteração ACEITA desta carta incrementa a versão em exatamente 0,1:1.5 → 1.6 → 1.7 → 1.8 → 1.9 → 2.0 → 2.1 → … Sem salto e sem versão pulada.O número inteiro NÃO é marco: v2.0 é apenas o sucessor de v1.9. Em especial,a versão da carta NÃO tem relação com as Fases do roteiro (seção 10) —carta v2.0 ≠ Fase 2.
+14.2 Um lote aceito = um incremento
+O incremento conta ATOS DE ACEITE do dono, não linhas alteradas. Uma rodadaque aceita três decisões de uma vez sobe 0,1, não 0,3. Dois aceites emmomentos distintos são dois incrementos, ainda que no mesmo dia.
+14.3 O que incrementa
+Decisão nova na seção 11 · mudança em spec de módulo (seção 6), critérios deaceite incluídos · mudança no núcleo canônico (seção 5: API, schema, consts,dicionário de eventos) · mudança em princípio de design (seção 2) ou emrestrição técnica (seção 3) · mudança no processo de delegação (seção 8) ·mudança nesta seção 14.
+14.4 O que NÃO incrementa
+Seção 12 (status): é placar, não contrato, e muda a cada integração ·correção de grafia ou de formatação que não altera significado ·preenchimento de célula já prevista em tabela existente.
+14.5 Critérios de aceite — TODOS obrigatórios
+1. Motivo registrado: decisão nova entra na seção 11 com a coluna Motivo   preenchida.2. Append-only preservado: decisão superada NÃO é apagada; permanece no   registro e a sucessora declara "supersede D{n}" (padrão D27 → D29).3. Cabeçalho coerente: o campo "Versão:" do topo bate com a última linha da   seção 13. Divergência é defeito da carta, e é verificável por leitura.4. Linha nova na seção 13 nomeando o que mudou.5. Sem código no mesmo commit: alteração de carta viaja sozinha. Se um módulo   precisa mudar junto, são dois commits.6. Mensagem de commit lista as seções tocadas.7. Se a alteração invalida critério de aceite já cumprido, o módulo afetado   volta para ☐ na seção 12 e o harness é re-rodado antes de voltar a ✅.
+O item 7 é o que impede a carta de passar por cima de um módulo já auditado:mudar a régua obriga a remedir.

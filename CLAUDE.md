@@ -2,7 +2,7 @@
 Você (agente) é o EXECUTOR técnico. O dono decide; este arquivo define COMOexecutar. Questões que exijam decisão de dono vão para o canal externo(relatório no Template A) — nunca resolvidas por inferência.
 
 1. Fontes de verdade (precedência)
-OIKOS.md — carta mestra v1.5: design, specs, decisões (seção 11)
+OIKOS.md — carta mestra: design, specs, decisões (seção 11). A versãovigente é a do cabeçalho da própria carta; não replicar aqui (deriva).
 Este arquivo — processo apenasConflito código↔carta = defeito do código. Conflito CLAUDE.md↔carta = vale a carta.
 2. Estrutura do repositório
 /index.html            jogo montado (blocos extraídos, ordem da seção 7)/OIKOS.md              carta mestra/CLAUDE.md             este arquivo/docs/delegacoes/      prompts + adendos de cada rodada/docs/devolucoes/      HTMLs entregues pelas IAs — INTOCÁVEIS (histórico)/docs/devolucoes/emendadas/   cópias com emendas aprovadas (para re-rodar harness)/docs/auditorias/      relatórios de auditoria por módulo/tools/                shim + executor de harnesses + smoke
@@ -11,9 +11,9 @@ grep -n "Math.random" — só ocorrências em COMENTÁRIOS são aceitas.
 grep -nE "document\.|querySelector|getElementById|createElement" — só noharness (e em S3/S12 quando existirem). Dentro de bloco de módulo = rejeição.
 Marcadores /* ===== OIKOS S{n} {NOME} — INÍCIO/FIM ===== */ são imutáveis:nunca reformatar, renomear, ou mover código para fora deles.
 Proibida inferência silenciosa. O que faltar: // LACUNA: no código +pergunta ao dono (Template A). Decisão local só a mais simples, // DECISÃO:.
-A carta só muda pelo dono. Você PROPÕE patches; nunca os aplica sozinho.
+A carta só muda pelo dono. Você PROPÕE patches; nunca os aplica sozinho.Alteração aceita segue a seção 14 da carta: +0,1 na versão por lote aceito,cabeçalho e seção 13 no mesmo commit, sem código junto.
 4. Emendas
-Devoluções em docs/devolucoes/ são históricos intocáveis. Emendas aprovadaspelo dono (ex.: D21, D22) são aplicadas AO EXTRAIR os blocos para o index.html,marcadas no código com // EMENDA v1.5 D{n}:, com diff registrado norelatório (Template B). A cópia emendada vai para docs/devolucoes/emendadas/.
+Devoluções em docs/devolucoes/ são históricos intocáveis. Emendas aprovadaspelo dono (ex.: D21, D22) são aplicadas AO EXTRAIR os blocos para o index.html,marcadas no código com // EMENDA v{versão vigente da carta} D{n}:, com diffregistrado no relatório (Template B). A cópia emendada vai para docs/devolucoes/emendadas/.
 
 5. Harnesses sob Node — tools/shim.js + tools/run-harness.js
 // tools/shim.js — carregar ANTES dos scripts do arquivo do móduloglobal.window = global;global.performance = global.performance || { now: () => Date.now() };global.requestAnimationFrame = (fn) => setTimeout(() => fn(performance.now()), 16);global.localStorage = (() => { const m = {}; return {  getItem: (k) => (k in m ? m[k] : null),  setItem: (k, v) => { m[k] = String(v); } }; })();global.document = { getElementById: () => ({ _h: '',  set innerHTML(v) { this._h = v; }, get innerHTML() { return this._h; } }) };if (!console.table) console.table = (rows) => console.log(rows);
