@@ -1463,6 +1463,270 @@
 /* ===== OIKOS S5 MODS — FIM ===== */
 </script>
 <script>
+/* ===== OIKOS S7 SIM — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // Terrenos (seção 5.3): 0 oceano, 1 água doce, 2 areia, 3 grama,
+  // 4 fértil, 5 floresta, 6 pedra, 7 montanha.
+  var OCEANO = 0, DOCE = 1, FERTIL = 4, FLORESTA = 5, PEDRA = 6, MONTANHA = 7;
+
+  var COMIDA_POR_PESSOA = 1;
+  var CRESCIMENTO_R = 0.08;     // r do logístico; baixo o bastante para não oscilar
+  var LIMIAR_ERA = 100;         // conhecimento que abre a era seguinte
+  var FOME_FRACAO = 0.10;       // parcela da população perdida por ano de fome
+  var POLUICAO_DECAIMENTO = 0.98;
+
+  // LACUNA: a carta NÃO fixa a superfície de export do S7 — ao contrário de S3
+  // e S5, a spec descreve só comportamento. Exporto o mínimo que o harness
+  // precisa para provar o aceite e que a S12 precisará para montar a barra de
+  // ferramentas: o catálogo, a validação, a colocação e o passo do ano.
+  // step() é público porque update() fica privado dentro do kernel, e sem ele
+  // não há como rodar N anos de forma determinística sem depender do rAF.
+
+  // DECISÃO: a coleta produz comida E madeira — a Era 1 não tem lenhador na
+  // lista da carta (acampamento, cabana de coletor, pesca, lascamento, trilha),
+  // e sem madeira nenhuma das outras construções sai do papel.
+  // DECISÃO: a trilha rende conhecimento. É a única das cinco sem produção
+  // óbvia, e "caminho" como troca de saber é a leitura mais simples.
+  var BUILDINGS = [
+    { id: 1, nome: 'acampamento',   custo: {},             casas: 8, vagas: 0, comida: 0, madeira: 0, pedra: 0, saber: 0.5, onde: 'terra' },
+    { id: 2, nome: 'cabanaColetor', custo: { wood: 5 },    casas: 0, vagas: 3, comida: 4, madeira: 2, pedra: 0, saber: 0.2, onde: 'verde' },
+    { id: 3, nome: 'pesca',         custo: { wood: 8 },    casas: 0, vagas: 3, comida: 5, madeira: 0, pedra: 0, saber: 0.2, onde: 'agua' },
+    { id: 4, nome: 'lascamento',    custo: { wood: 6 },    casas: 0, vagas: 2, comida: 0, madeira: 0, pedra: 3, saber: 0.4, onde: 'pedra' },
+    { id: 5, nome: 'trilha',        custo: { stone: 2 },   casas: 0, vagas: 0, comida: 0, madeira: 0, pedra: 0, saber: 0.3, onde: 'terra' }
+  ];
+  var PORID = {};
+  for (var bi = 0; bi < BUILDINGS.length; bi++) PORID[BUILDINGS[bi].id] = BUILDINGS[bi];
+
+  // Estado volátil do módulo, por IDENTIDADE do objeto de estado — reset() e
+  // load() reatribuem state, e sinalizadores de aresta não podem vazar entre
+  // partidas. Mesmo gatilho de D23 (S6), D36 (S3) e D37 (S5).
+  // EMENDA v1.12 D41: eraAnunciada guarda a ERA já anunciada (-1 = nenhuma),
+  // não um booleano de sessão.
+  var ultimoState = null, eraAnunciada = -1, emFome = false;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    eraAnunciada = -1;                              // EMENDA v1.12 D41
+    emFome = false;
+  }
+
+  function dentro(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  function vizinhoTem(x, y, raio, teste) {
+    var M = O.consts.MAP, T = O.state.tiles.terrain;
+    for (var dy = -raio; dy <= raio; dy++) for (var dx = -raio; dx <= raio; dx++) {
+      var nx = x + dx, ny = y + dy;
+      if (!dentro(nx, ny)) continue;
+      if (teste(T[ny * M + nx])) return true;
+    }
+    return false;
+  }
+
+  // Condições de posicionamento dimensionadas sobre o mapa real do S2.
+  function condicaoOk(onde, x, y) {
+    switch (onde) {
+      case 'terra': return true;
+      case 'agua':  return vizinhoTem(x, y, 1, function (t) { return t === OCEANO || t === DOCE; });
+      case 'pedra': return vizinhoTem(x, y, 2, function (t) { return t === PEDRA || t === MONTANHA; });
+      case 'verde': return vizinhoTem(x, y, 2, function (t) { return t === FLORESTA || t === FERTIL; });
+    }
+    return false;
+  }
+
+  // canBuild(idOuNome, x, y) -> { ok, motivo }. Nunca lança.
+  // O S7 valida o terreno por conta própria: a seção 4.2 não lista Render entre
+  // o que um módulo pode consumir, então reusar isZoneable seria dependência
+  // fora do contrato.
+  function canBuild(ref, x, y) {
+    sincronizar();
+    var b = typeof ref === 'string' ? null : PORID[ref];
+    if (!b) for (var i = 0; i < BUILDINGS.length; i++) if (BUILDINGS[i].nome === ref) b = BUILDINGS[i];
+    if (!b) return { ok: false, motivo: 'edificio desconhecido' };
+    if (!dentro(x, y) || Math.floor(x) !== x || Math.floor(y) !== y) return { ok: false, motivo: 'fora do mapa' };
+    var M = O.consts.MAP, i2 = y * M + x, st = O.state;
+    if (st.tiles.terrain[i2] < 2) return { ok: false, motivo: 'agua' };
+    if (st.tiles.building[i2] !== 0) return { ok: false, motivo: 'ocupado' };
+    if (!condicaoOk(b.onde, x, y)) return { ok: false, motivo: 'condicao ' + b.onde };
+    for (var k in b.custo) if (Object.prototype.hasOwnProperty.call(b.custo, k)) {
+      if ((st.res[k] || 0) < b.custo[k]) return { ok: false, motivo: 'falta ' + k };
+    }
+    return { ok: true, motivo: '', b: b };
+  }
+
+  function place(ref, x, y) {
+    var v = canBuild(ref, x, y);
+    if (!v.ok) return null;
+    var M = O.consts.MAP, i2 = y * M + x, st = O.state;
+    for (var k in v.b.custo) if (Object.prototype.hasOwnProperty.call(v.b.custo, k)) st.res[k] -= v.b.custo[k];
+    st.tiles.building[i2] = v.b.id;
+    st.tiles.level[i2] = 1;
+    // EMENDA v1.12 D42: payload uniforme { i, x, y, ... } nos dois pontos.
+    O.bus.emit('tile:changed', { i: i2, x: x, y: y, building: v.b.id });
+    return v.b;
+  }
+
+  // Fluxo do ano. A base de CADA número vem no snapshot e passa por Mods.get
+  // (D34): nenhum valor é usado sem atravessar o motor.
+  function step() {
+    sincronizar();
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, B = st.tiles.building, L = st.tiles.level, P = st.tiles.pollution;
+    var i, x, y, b;
+
+    // --- bruto dos edifícios --------------------------------------------
+    var comidaBruta = 0, madeiraBruta = 0, pedraBruta = 0;
+    var casasBrutas = 0, vagasBrutas = 0, saberBruto = 0, ativos = 0;
+    for (i = 0; i < N; i++) {
+      if (!B[i]) continue;
+      b = PORID[B[i]];
+      if (!b) continue;
+      var nivel = L[i] || 1;
+      ativos++;
+      comidaBruta += b.comida * nivel;
+      madeiraBruta += b.madeira * nivel;
+      pedraBruta += b.pedra * nivel;
+      casasBrutas += b.casas * nivel;
+      vagasBrutas += b.vagas * nivel;
+      saberBruto += b.saber * nivel;
+    }
+
+    var pop = st.sim.pop;
+    var snap = {
+      pop: pop, ano: st.year, era: st.era, edificios: ativos,
+      foodProd: comidaBruta, woodProd: madeiraBruta, stoneProd: pedraBruta,
+      foodUse: pop * COMIDA_POR_PESSOA,
+      housing: casasBrutas, jobs: vagasBrutas,
+      knowledge: saberBruto, tension: 0, growth: 0
+    };
+
+    // --- 1. consumo, 2. produção, 3. excedente --------------------------
+    var consumo = O.Mods.get('foodUse', snap);
+    var comida = O.Mods.get('foodProd', snap);
+    var madeira = O.Mods.get('woodProd', snap);
+    var pedra = O.Mods.get('stoneProd', snap);
+    var excedente = comida - consumo;
+
+    st.res.food = Math.max(0, st.res.food + excedente);
+    st.res.wood += madeira;
+    st.res.stone += pedra;
+    st.sim.foodProd = comida;
+
+    // --- 4. moradia e crescimento logístico -----------------------------
+    var moradia = O.Mods.get('housing', snap);
+    st.sim.housing = moradia;
+    snap.housing = moradia;
+
+    var faminto = (excedente < 0 && st.res.food <= 0);
+    if (!faminto && moradia > 0 && pop > 0) {
+      snap.growth = CRESCIMENTO_R * pop * (1 - pop / moradia);
+      pop = pop + O.Mods.get('growth', snap);
+    } else if (!faminto && moradia > 0 && pop <= 0) {
+      snap.growth = 1;                      // semente: um acampamento atrai gente
+      pop = O.Mods.get('growth', snap);
+    }
+
+    // --- 5. empregos -----------------------------------------------------
+    st.sim.jobs = O.Mods.get('jobs', snap);
+
+    // --- 6. fome ---------------------------------------------------------
+    if (faminto) {
+      var perdidos = Math.max(1, Math.floor(pop * FOME_FRACAO));
+      pop = Math.max(0, pop - perdidos);
+      // DECISÃO: a crônica é por ARESTA — registra quando a fome começa, não a
+      // cada ano faminto. Cem entradas iguais afogariam o epílogo (S11), que
+      // agrupa por era e lê efeitoMedido.
+      if (!emFome) {
+        emFome = true;
+        O.Chron.log({
+          type: 'desastre',
+          titulo: 'A fome chega à Casa',
+          prosa: 'O celeiro se esvazia e a Casa cobra o preço do que não foi plantado.',
+          efeitoMedido: { pop: -perdidos, excedente: Math.round(excedente * 100) / 100 }
+        });
+      }
+    } else if (emFome && excedente >= 0) {
+      emFome = false;
+    }
+
+    st.sim.pop = Math.max(0, pop);
+    snap.pop = st.sim.pop;
+
+    // --- 7. tensão -------------------------------------------------------
+    snap.tension = (moradia > 0 ? Math.max(0, st.sim.pop - moradia) / moradia : 0) + (faminto ? 0.5 : 0);
+    st.sim.tension = O.Mods.get('tension', snap);
+
+    // --- 8. conhecimento e era ------------------------------------------
+    st.meters.knowledge += O.Mods.get('knowledge', snap);
+    // EMENDA v1.12 D41: chaveado pela ERA VIGENTE. O booleano só era limpo na
+    // troca de identidade do estado, então o portão abria uma vez por sessão e
+    // o jogo emperraria na Era 2 — seis eras são a espinha dorsal do design.
+    if (eraAnunciada !== st.era && st.meters.knowledge >= LIMIAR_ERA) {
+      eraAnunciada = st.era;
+      O.bus.emit('era:ready', { era: st.era, knowledge: st.meters.knowledge });
+    }
+
+    degradar(comidaBruta, madeiraBruta, ativos);
+  }
+
+  // Degradação. O sorteio vem de rng.child('sim.' + ano): child() deriva da
+  // seed de CONSTRUÇÃO e não consome o pai, então o mesmo ano dá sempre o mesmo
+  // resultado — inclusive depois de um load(), quando o stream principal é
+  // recriado. Determinismo estrutural sem guardar estado de rng.
+  function degradar(comidaBruta, madeiraBruta, ativos) {
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, B = st.tiles.building, P = st.tiles.pollution;
+    var r = O.rng.child('sim.' + st.year);
+    var i, x, y;
+
+    // poluição: cada edifício suja o próprio tile e o raio 1; tudo decai devagar
+    for (i = 0; i < N; i++) P[i] *= POLUICAO_DECAIMENTO;
+    for (i = 0; i < N; i++) {
+      if (!B[i]) continue;
+      x = i % M; y = (i - x) / M;
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        var nx = x + dx, ny = y + dy;
+        if (!dentro(nx, ny)) continue;
+        var ni = ny * M + nx;
+        P[ni] = Math.min(1, P[ni] + (dx === 0 && dy === 0 ? 0.04 : 0.015));
+      }
+    }
+
+    // colheita excessiva consome floresta, e o solo perde fertilidade sob uso
+    var pressao = (comidaBruta + madeiraBruta) / 40;
+    if (pressao <= 0) return;
+    var tentativas = Math.min(6, Math.floor(pressao) + (r.f() < (pressao % 1) ? 1 : 0));
+    for (var t = 0; t < tentativas; t++) {
+      var alvo = r.i(N);
+      // EMENDA v1.12 D42: payload uniforme { i, x, y, ... }.
+      // EMENDA v1.12 D43: geo.forestTiles e geo.fertileTiles seguem VIVOS — a S8
+      // dimensiona a carta de decisão por state.geo, e congelado no worldgen ele
+      // faria a Era 4 decidir sobre a floresta que existia na Era 1.
+      var ax = alvo % M, ay = (alvo - ax) / M, g = st.geo;
+      if (T[alvo] === FLORESTA) {
+        T[alvo] = 3;
+        if (g && typeof g.forestTiles === 'number') g.forestTiles--;
+        O.bus.emit('tile:changed', { i: alvo, x: ax, y: ay, terrain: 3 });
+      } else if (T[alvo] === FERTIL && r.f() < 0.35) {
+        T[alvo] = 3;
+        if (g && typeof g.fertileTiles === 'number') g.fertileTiles--;
+        O.bus.emit('tile:changed', { i: alvo, x: ax, y: ay, terrain: 3 });
+      }
+    }
+  }
+
+  O.use('Sim', { update: step });
+
+  O.Sim = { BUILDINGS: BUILDINGS, canBuild: canBuild, place: place, step: step };
+})(window);
+/* ===== OIKOS S7 SIM — FIM ===== */
+</script>
+<script>
 // Arranque mínimo: dimensiona o canvas à janela, gera a ilha e sobe o loop.
 // Guardado para o NAVEGADOR: sob Node (smoke do integrador) não há canvas nem
 // addEventListener, e start() agendaria rAF para sempre, travando o processo.

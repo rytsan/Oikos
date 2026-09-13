@@ -21,7 +21,7 @@ Executor: node tools/run-harness.js <arquivo>.html — carrega o shim, extraicad
 
 6. Smoke test pós-integração (tools/smoke.js, contra o index.html)
 OIKOS.reset(42);OIKOS.Worldgen.generate();console.log('geo:', OIKOS.state.geo);OIKOS.Chron.log({ type: 'marco', titulo: 'Fogada inicial', prosa: 'A Casa acorda.' });console.log('cronicas:', OIKOS.Chron.timeline().length);console.log('periodo main:', new OIKOS.Elliptic.Pendulum({ id: 'main', omega: 1 }).period().toFixed(3));
-Esperado: geo com os 7 campos; hasRiver booleano; 1 entrada na timeline;período plausível (> 4, crescendo com k). A partir da integração do S3:roundtrip project→unproject exato e visibleTiles não vazio — as funçõespuras do render têm de responder sem canvas. Com o S5: Mods.get aplica aordem D28 ((base+add)×mult) e removeBySource devolve o motor ao valor base.
+Esperado: geo com os 7 campos; hasRiver booleano; 1 entrada na timeline;período plausível (> 4, crescendo com k). A partir da integração do S3:roundtrip project→unproject exato e visibleTiles não vazio — as funçõespuras do render têm de responder sem canvas. Com o S5: Mods.get aplica aordem D28 ((base+add)×mult) e removeBySource devolve o motor ao valor base.Com o S7: planta acampamento e pesca, 40 anos de simulação, populaçãocresce e moradia > 0.
 
 7. Ordem canônica de integração no index.html
 S1 → S2 → S4 → S6 → S3 → S5 → S7 → S8 → S9 → S10 → S11 → S12 → S13

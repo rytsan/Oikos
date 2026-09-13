@@ -50,4 +50,26 @@ assert.strictEqual(comMods, 30, 'ordem D28: (10+5)*2 = 30');
 assert.strictEqual(OIKOS.Mods.removeBySource('smoke'), 2, 'removeBySource devolve a contagem');
 assert.strictEqual(OIKOS.Mods.get('foodProd', { foodProd: 10 }), 10, 'motor vazio devolve a base');
 
+// S7 integrado: catalogo, colocacao e quarenta anos de simulacao.
+assert.ok(OIKOS.Sim && typeof OIKOS.Sim.step === 'function', 'Sim ausente');
+assert.strictEqual(OIKOS.Sim.BUILDINGS.length, 5, 'catalogo da Era 1 com cinco');
+OIKOS.state.res.wood = 200; OIKOS.state.res.food = 100;
+function plantarSmoke(nome, n) {
+  let feitos = 0;
+  const M = OIKOS.consts.MAP;
+  for (let y = 0; y < M && feitos < n; y++)
+    for (let x = 0; x < M && feitos < n; x++)
+      if (OIKOS.Sim.place(nome, x, y)) feitos++;
+  return feitos;
+}
+const nAcamp = plantarSmoke('acampamento', 3);
+const nPesca = plantarSmoke('pesca', 3);
+console.log('plantados: acampamento', nAcamp, '· pesca', nPesca);
+assert.ok(nAcamp >= 1 && nPesca >= 1, 'nao plantou o basico da Era 1');
+for (let i = 0; i < 40; i++) { OIKOS.state.year++; OIKOS.Sim.step(); }
+console.log('pop apos 40 anos:', OIKOS.state.sim.pop.toFixed(2),
+  '· moradia:', OIKOS.state.sim.housing, '· floresta em geo:', OIKOS.state.geo.forestTiles);
+assert.ok(OIKOS.state.sim.pop > 1, 'populacao nao cresceu');
+assert.ok(OIKOS.state.sim.housing > 0, 'moradia zerada');
+
 console.log('SMOKE OK');
