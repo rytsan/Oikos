@@ -1,6 +1,6 @@
 crônicas da primeira casa
 
-Versão: 1.10 · Estado: rodada 2 auditada e integrada (S1+S2+S4+S6 no index.html, smoke OK); rodada 3 (S3+S5) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
+Versão: 1.10 · Estado: rodadas 2 e 3 auditadas e integradas (S1+S2+S4+S6+S3+S5 no index.html, smoke OK); rodada 4 (S7 Sim) delegávelComo usar: este documento é a única fonte de verdade do projeto. Todadelegação a IA recebe este arquivo integral + o template da seção 8.1(+ adendo do módulo, quando houver). Nada aqui pode ser alterado semregistrar o motivo na seção 11. Contexto de ambiente (memórias, grafos,conversas anteriores) NÃO prevalece sobre esta carta.
 
 1. Visão
 Jogo de construção de civilização numa ilha procedural, visão pseudo-isométrica,100% no navegador em um único index.html — sem build, sem dependências,sem rede — hospedável em GitHub Pages. Do acampamento paleolítico à eracontemporânea, o jogador não constrói apenas uma cidade: promulga asinstituições de um povo e responde, era após era, por como a Casa (a ilha)é tratada. Cada decisão impõe vantagem e restrição; cedo condiciona tarde;a ilha finita é a árbitra final.
@@ -124,8 +124,8 @@ Você é o desenvolvedor responsável por UM módulo do projeto OIKOS, descriton
 Rodada	Specs	Paralelo	Estado
 1	S1	—	✅ auditado
 2	S2 + S4 + S6	sim	✅ auditado (emendas D21/D22 aplicam-se na extração)
-3	S3 + S5	sim	adendos emitidos; delegável
-4	S7	—	—
+3	S3 + S5	sim	✅ auditado e integrado (emendas D35/D36 na S3, D37/D38 na S5)
+4	S7	—	delegável (rodada 3 integrada)
 5	S8 + S9	sim	—
 6	S10 + S11 + S12	sim	—
 7	S13, item a item	sim	—
@@ -203,7 +203,7 @@ S1 Kernel	✅ v1.5	✅	✅ (código + harness 11/11)	✅ integrado no index.html
 S2 Worldgen	✅ v1.5	✅	✅ (código + harness 13/13 medido; D26, D29, D30)	✅ integrado no index.html (sessão #1)
 S3 Render	✅ v1.5 + adendo	✅	✅ (código + harness 9/9 +3 SKIP [browser]; parecer do auditor #2; D33, D35, D36)	✅ integrado no index.html (sessão #1)
 S4 Elíptico	✅ v1.5	✅	✅ (código + harness 11/11 medido; emenda D21)	✅ integrado no index.html (sessão #1)
-S5 Mods	✅ v1.5 + adendo	✅	☐ (harness 12/12 +0 SKIP; aguarda parecer de auditor)	☐
+S5 Mods	✅ v1.5 + adendo	✅	✅ (código + harness 12/12 +0 SKIP; parecer do auditor #2; D37, D38)	✅ integrado no index.html (sessão #1)
 S6 Crônicas	✅ v1.5	✅	✅ (código + harness 9/9; emenda D22)	✅ integrado no index.html (sessão #1)
 S7 Sim	✅ v1.5	☐	☐	☐
 S8 Eras	✅ v1.5	☐	☐	☐
