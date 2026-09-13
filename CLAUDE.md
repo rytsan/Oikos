@@ -38,7 +38,7 @@ Atualizar seção 12 do OIKOS.md no mesmo commit
 9. Decisões e pendências — NÃO decida por conta própria
 D27 (veios em toda a terra): SUPERADA por D29 — veios restritos a PEDRAe MONTANHA, como o código auditado da S2 já fazia. Nada a fazer.
 D-variabilidade: RATIFICADA por D30 — alvo de terra [1010,1350] efloresta [12%,26%] por seed via child('world'), label 'world' incorporadoao contrato de streams da S2. Encerrada; nada pendente nesta frente.
-Sufixo de SKIP (seção 4 item 9c): APROVADO pelo dono na rodada 3, a APLICARno próximo lote de alteração da carta. Texto a ajustar: o sufixo"(+y SKIP [browser])" passa a ser exigido só quando y > 0; com y = 0 a linha"x/x PASS" basta. Motivo da espera: um lote aceito = um incremento (14.2) —entra junto com as decisões que saírem da auditoria da rodada 3, não avulso.Não afeta os prompts S3/S5 já despachados: eles pedem forma mais estrita, quesegue válida.
+Sufixo de SKIP (seção 4 item 9c): APLICADO na carta v1.9 — o sufixo"(+y SKIP [browser])" só é exigido quando y > 0. Encerrado; nada pendente.
 10. Quando PARAR e perguntar ao dono
 Qualquer FAIL de harness não explicado.
 Divergência de contrato sem patch aprovado.
