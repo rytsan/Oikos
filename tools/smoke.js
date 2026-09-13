@@ -40,4 +40,14 @@ const vis = OIKOS.Render.visibleTiles(960, 540);
 console.log('visibleTiles 960x540:', vis.length, 'tiles');
 assert.ok(vis.length > 0, 'visibleTiles vazio');
 
+// S5 integrado: motor de modificadores responde e a ordem D28 vale.
+assert.ok(OIKOS.Mods && typeof OIKOS.Mods.push === 'function', 'Mods ausente');
+OIKOS.Mods.push({ id: 'smoke.mult', source: 'smoke', target: 'foodProd', kind: 'mult', value: 2 });
+OIKOS.Mods.push({ id: 'smoke.add', source: 'smoke', target: 'foodProd', kind: 'add', value: 5 });
+const comMods = OIKOS.Mods.get('foodProd', { foodProd: 10 });
+console.log('mods foodProd (base 10, add 5, mult 2):', comMods);
+assert.strictEqual(comMods, 30, 'ordem D28: (10+5)*2 = 30');
+assert.strictEqual(OIKOS.Mods.removeBySource('smoke'), 2, 'removeBySource devolve a contagem');
+assert.strictEqual(OIKOS.Mods.get('foodProd', { foodProd: 10 }), 10, 'motor vazio devolve a base');
+
 console.log('SMOKE OK');

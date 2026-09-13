@@ -1234,6 +1234,235 @@
 /* ===== OIKOS S3 RENDER — FIM ===== */
 </script>
 <script>
+/* ===== OIKOS S5 MODS — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Estado do motor — CLOSURE VOLÁTIL (D28). O schema v1 não tem campo de
+  // mods, então nada aqui é serializado. Fontes persistentes (instituições)
+  // re-registram após load(), via S8.
+  //
+  // DECISÃO: NÃO limpo a closure ao detectar troca de identidade de state
+  // (o gatilho que a S6 usa para reidratar ids). D28 atribui a re-registração
+  // à S8, e re-push por id é idempotente — quem recarrega um save re-empurra
+  // os mesmos ids e substitui no lugar. Limpar aqui duplicaria a
+  // responsabilidade e apagaria mods de fontes que ainda não re-registraram.
+  //
+  // porAlvo: target -> array de mods em ORDEM DE PUSH (a "idade de adoção").
+  // porId:   id -> mod, para o re-push substituir sem duplicar.
+  // ---------------------------------------------------------------------
+  var porAlvo = Object.create(null);
+  var porId = Object.create(null);
+
+  // EMENDA v1.10 D37: a closure ZERA quando o kernel reatribui o estado.
+  // A D28 manda fontes persistentes re-registrarem após load — cláusula que só
+  // faz sentido se o motor começa vazio, e a decisão anterior a tornava letra
+  // morta. Sem zerar, instituições de uma partida anterior sobrevivem no save
+  // carregado e alteram seus números em silêncio, sem que nada as remova.
+  // Mesmo gatilho de identidade que a S6 usa para reidratar ids.
+  var ultimoState = null;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    porAlvo = Object.create(null);
+    porId = Object.create(null);
+  }
+
+  var KINDS = { add: 1, mult: 1 };
+
+  function ehString(v) { return typeof v === 'string' && v.length > 0; }
+  function finito(v) { return typeof v === 'number' && isFinite(v); }
+
+  function listaDe(target) {
+    return porAlvo[target] || (porAlvo[target] = []);
+  }
+
+  function tirarDaLista(m) {
+    var l = porAlvo[m.target];
+    if (!l) return;
+    var i = l.indexOf(m);
+    if (i >= 0) l.splice(i, 1);
+  }
+
+  // ---------------------------------------------------------------------
+  // push — valida, insere ou SUBSTITUI NO LUGAR, emite 'mods:changed'.
+  // Nunca lança; entrada inválida = console.error + null, SEM emitir.
+  // ---------------------------------------------------------------------
+  function push(cfg) {
+    sincronizar();                                  // EMENDA v1.10 D37
+    if (!cfg || typeof cfg !== 'object') {
+      console.error('[OIKOS Mods] push inválido (não é objeto):', cfg);
+      return null;
+    }
+    if (!ehString(cfg.id) || !ehString(cfg.source) || !ehString(cfg.target)) {
+      console.error('[OIKOS Mods] push inválido (id/source/target têm de ser strings):', cfg);
+      return null;
+    }
+    if (!KINDS[cfg.kind]) {
+      console.error('[OIKOS Mods] push inválido (kind fora de {add, mult}):', cfg);
+      return null;
+    }
+    var temFn = typeof cfg.fn === 'function';
+    if (!temFn && !finito(cfg.value)) {
+      console.error('[OIKOS Mods] push inválido (value finito OU fn função):', cfg);
+      return null;
+    }
+
+    // DECISÃO: expiresAt não consta da lista de validações da carta. Aceito
+    // qualquer valor; não-finito vale como AUSENTE, ou seja, permanente.
+    var expira = finito(cfg.expiresAt) ? cfg.expiresAt : undefined;
+
+    var velho = porId[cfg.id];
+    if (velho) {
+      // Reforma NÃO reordena precedência: o mod é editado no lugar e mantém
+      // a posição que já ocupava na fila do alvo.
+      // DECISÃO: se o target mudou, não há posição a preservar na lista nova —
+      // sai da antiga e entra no fim da nova.
+      // EMENDA v1.10 D38: quem mantinha cache do alvo ANTIGO também precisa
+      // saber que ele mudou — sem isto, só o alvo novo era notificado.
+      var alvoAntigo = velho.target;
+      if (velho.target !== cfg.target) {
+        tirarDaLista(velho);
+        velho.target = cfg.target;
+        listaDe(cfg.target).push(velho);
+      }
+      velho.source = cfg.source;
+      velho.kind = cfg.kind;
+      velho.value = temFn ? undefined : Number(cfg.value);
+      velho.fn = temFn ? cfg.fn : undefined;
+      velho.expiresAt = expira;
+      O.bus.emit('mods:changed', { target: velho.target });
+      if (alvoAntigo !== velho.target) O.bus.emit('mods:changed', { target: alvoAntigo });
+      return velho;
+    }
+
+    var m = {
+      id: cfg.id, source: cfg.source, target: cfg.target, kind: cfg.kind,
+      value: temFn ? undefined : Number(cfg.value),
+      fn: temFn ? cfg.fn : undefined,
+      expiresAt: expira
+    };
+    porId[m.id] = m;
+    listaDe(m.target).push(m);
+    O.bus.emit('mods:changed', { target: m.target });
+    return m;
+  }
+
+  // ---------------------------------------------------------------------
+  // lazy-sweep — expira por ANO DE JOGO, lido vivo de OIKOS.state.year.
+  // Roda dentro do get, sobre a lista do alvo pedido apenas.
+  // ---------------------------------------------------------------------
+  function varrer(lista) {
+    var ano = O.state.year, i, m;
+    for (i = lista.length - 1; i >= 0; i--) {
+      m = lista[i];
+      if (m.expiresAt !== undefined && m.expiresAt <= ano) {
+        lista.splice(i, 1);
+        delete porId[m.id];
+      }
+    }
+  }
+
+  // valor de um mod no momento do get. fn é avaliada A CADA get — é o que
+  // torna as decisões sensíveis a contexto. Retorno não-finito: console.error
+  // e o mod é IGNORADO (não derruba o cálculo inteiro).
+  function valorDe(m, snapshot) {
+    if (!m.fn) return m.value;
+    var v;
+    try { v = m.fn(snapshot); }
+    catch (e) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" lancou:', e);
+      return null;
+    }
+    if (!finito(v)) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" devolveu não-finito:', v);
+      return null;
+    }
+    return v;
+  }
+
+  // ---------------------------------------------------------------------
+  // get(target, snapshot?) — nunca lança, nunca muta a base.
+  //
+  // LACUNA: a carta exige que "motor vazio devolve o valor base", mas a
+  // assinatura get(target, snapshot?) não traz parâmetro de base. Escolho a
+  // leitura mais simples que satisfaz o aceite sem inventar parâmetro: a base
+  // é snapshot[target] quando for número finito, e 0 quando não houver
+  // snapshot ou a chave. O mesmo snapshot vai para fn(snapshot), e o objeto
+  // NUNCA é escrito. Se o dono preferir base explícita, é troca de assinatura
+  // na carta, não aqui.
+  //
+  // Ordem (D28): TODOS os 'add' por idade de adoção, DEPOIS todos os 'mult'
+  // por idade. Duas passadas sobre a mesma lista em ordem de push — sem
+  // alocar arrays intermediários, o que mantém o get dentro do orçamento.
+  // ---------------------------------------------------------------------
+  function get(target, snapshot) {
+    try {
+      sincronizar();                                // EMENDA v1.10 D37
+      var base = (snapshot && finito(snapshot[target])) ? snapshot[target] : 0;
+      if (!ehString(target)) return base;
+      var lista = porAlvo[target];
+      if (!lista || !lista.length) return base;
+
+      varrer(lista);
+
+      var r = base, i, m, v;
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'add') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r += v;
+      }
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'mult') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r *= v;
+      }
+      return finito(r) ? r : base;
+    } catch (e) {
+      console.error('[OIKOS Mods] get("' + target + '") lancou:', e);
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // removeBySource — devolve a contagem removida.
+  // DECISÃO: emite um 'mods:changed' por ALVO distinto afetado, com o mesmo
+  // payload {target} do push. Manter uma única forma de payload vale mais
+  // para quem escuta (invalidar cache por alvo) do que um evento só com
+  // {source}, que obrigaria o ouvinte a tratar dois formatos.
+  // ---------------------------------------------------------------------
+  function removeBySource(sourceId) {
+    sincronizar();                                  // EMENDA v1.10 D37
+    if (!ehString(sourceId)) {
+      console.error('[OIKOS Mods] removeBySource inválido (source tem de ser string):', sourceId);
+      return 0;
+    }
+    var n = 0, alvos = [];
+    for (var target in porAlvo) {
+      var lista = porAlvo[target], mexeu = false;
+      for (var i = lista.length - 1; i >= 0; i--) {
+        if (lista[i].source !== sourceId) continue;
+        delete porId[lista[i].id];
+        lista.splice(i, 1);
+        n++; mexeu = true;
+      }
+      if (mexeu) alvos.push(target);
+    }
+    for (var k = 0; k < alvos.length; k++) O.bus.emit('mods:changed', { target: alvos[k] });
+    return n;
+  }
+
+  // Biblioteca pura: sem OIKOS.use(), sem hook de ciclo de vida, sem escrita
+  // em state, zero DOM.
+  O.Mods = { push: push, get: get, removeBySource: removeBySource };
+})(window);
+/* ===== OIKOS S5 MODS — FIM ===== */
+</script>
+<script>
 // Arranque mínimo: dimensiona o canvas à janela, gera a ilha e sobe o loop.
 // Guardado para o NAVEGADOR: sob Node (smoke do integrador) não há canvas nem
 // addEventListener, e start() agendaria rAF para sempre, travando o processo.
