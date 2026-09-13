@@ -1,0 +1,2288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>OIKOS S8 — Eras & Instituições · harness de aceite</title>
+<style>
+  body{font:13px/1.45 ui-monospace,Consolas,monospace;background:#14171c;color:#dfe4ea;margin:24px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;margin-top:8px;max-width:1400px}
+  td,th{border:1px solid #39414d;padding:4px 10px;text-align:left;vertical-align:top}
+  th{background:#1e242c}
+  .pass{color:#4ade80;font-weight:bold}
+  .fail{color:#f87171;font-weight:bold}
+  .skip{color:#fbbf24;font-weight:bold}
+  #resumo{margin-top:14px;font-size:14px}
+  .det{color:#8b95a5}
+</style>
+</head>
+<body>
+<h1>OIKOS S8 — Eras & Instituições · harness de aceite</h1>
+<div id="saida">executando…</div>
+<div id="resumo"></div>
+<script>
+/* ===== OIKOS S1 KERNEL — INÍCIO ===== */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Constantes canônicas (CONTRATO entre os 13 módulos). Objeto mutável de
+  // propósito: o integrador/harness pode sobrescrever TICK_MS ou SAVE_KEY
+  // antes de start() e o loop lê os valores a cada uso (regra 5.8).
+  // ---------------------------------------------------------------------
+  var consts = {
+    TILE_W: 64, TILE_H: 32,
+    MAP: 56,
+    TICK_MS: 2000,
+    MAX_TICKS_PER_FRAME: 5,
+    ZOOM_MIN: 0.5, ZOOM_MAX: 2.5,
+    SAVE_KEY: 'oikos_v1',
+    SCHEMA_VERSION: 1
+  };
+
+  // ---------------------------------------------------------------------
+  // RNG determinístico — mulberry32 + derivação por hash xmur3.
+  // NENHUM Math.random em todo o kernel.
+  // ---------------------------------------------------------------------
+  function xmur3(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // makeRng(seed) -> { seed, f(), i(n), pick(arr), child(label) }
+  // DECISÃO: makeRng é exportado — a spec o descreve mas não o lista nas
+  // chaves; os módulos precisam dele para criar streams locais.
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    var next = mulberry32(s);                  // estado interno privado
+    return {
+      seed: s,
+      f: function () { return next(); },
+      i: function (n) { return Math.floor(next() * n); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      // child() deriva da SEED DE CONSTRUÇÃO, nunca do estado corrente: por
+      // isso não consome draws do pai e é estável em qualquer momento.
+      child: function (label) {
+        var h = xmur3(String(label))();
+        return makeRng((s ^ h) >>> 0);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Estado central — schema v1 travado (seção 3 da spec).
+  // ---------------------------------------------------------------------
+  function makeState(seed) {
+    var N = consts.MAP * consts.MAP;
+    return {
+      schemaVersion: consts.SCHEMA_VERSION,
+      seed: seed >>> 0,
+      year: 0, era: 0, paused: false,
+      meters: { knowledge: 0, legitimacy: 50, harmonyAxis: 0 },
+      res: { food: 0, wood: 0, stone: 0, copper: 0, iron: 0, coal: 0, gold: 0 },
+      tiles: {
+        terrain: new Uint8Array(N),
+        resource: new Uint8Array(N),
+        building: new Uint8Array(N),
+        level: new Uint8Array(N),
+        owner: new Uint8Array(N),
+        pollution: new Float32Array(N)
+      },
+      geo: {},
+      pendulums: {
+        main: { u: 0, k: 0.1 }, harvest: { u: 0, k: 0.1 }, economy: { u: 0, k: 0.1 }
+      },
+      institutions: [],
+      chronicle: [],
+      clock: { stagnation: 0, decayStage: 0 },
+      camera: { x: 0, y: 0, zoom: 1 },
+      tool: null, hover: null,
+      sim: { pop: 0, jobs: 0, foodProd: 0, housing: 0, tension: 0 }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Barramento de eventos — pub/sub SÍNCRONO, FIFO por ordem de registro.
+  // Os nomes do dicionário (seção 5) não precisam de declaração prévia: o
+  // bus aceita qualquer string. O kernel só emite 'sim:tick'.
+  // ---------------------------------------------------------------------
+  var handlers = Object.create(null);
+  var bus = {
+    on: function (evt, fn) {
+      var arr = handlers[evt] || (handlers[evt] = []);
+      arr.push(fn);
+      return function off() { var i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+    },
+    emit: function (evt, payload) {
+      var arr = handlers[evt];
+      if (!arr || !arr.length) return;
+      // DECISÃO: itera sobre cópia — on/off durante o emit não corrompe a volta.
+      var snap = arr.slice();
+      for (var i = 0; i < snap.length; i++) {
+        try { snap[i](payload); }
+        catch (e) { console.error('[OIKOS bus] handler de "' + evt + '" lancou:', e); }
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Registro de módulos (regra 5.9).
+  // ---------------------------------------------------------------------
+  var modules = [];
+  var started = false;
+
+  function initModule(m) {
+    if (m.ready) return;
+    m.ready = true;
+    if (!m.init) return;
+    try { m.init(); }
+    catch (e) { console.error('[OIKOS] init("' + m.name + '") lancou:', e); }
+  }
+
+  function use(name, hooks) {
+    hooks = hooks || {};
+    var m = { name: name, init: hooks.init, update: hooks.update, draw: hooks.draw, ready: false };
+    modules.push(m);
+    if (started) initModule(m);                // use() após start(): init imediato
+  }
+
+  // ---------------------------------------------------------------------
+  // Loop — rAF + tick fixo por acumulador.
+  // ---------------------------------------------------------------------
+  var rafId = 0, lastNow = 0, acc = 0;
+
+  function tick() {
+    loop.tickCount++;
+    global.OIKOS.state.year++;                 // year++ ANTES do emit (regra 5.9)
+    // DECISÃO: ordem do tick = year++ · update dos módulos · emit('sim:tick').
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.update) continue;
+      try { m.update(); }
+      catch (e) { console.error('[OIKOS] update("' + m.name + '") lancou:', e); }
+    }
+    bus.emit('sim:tick', { year: global.OIKOS.state.year });
+  }
+
+  function step(now) {
+    rafId = global.requestAnimationFrame(step);
+    var dt = now - lastNow; lastNow = now;
+    loop.frame++;
+
+    if (!global.OIKOS.state.paused) {
+      acc += dt;
+      var TICK = consts.TICK_MS;               // leitura viva (regra 5.8)
+      var cap = consts.MAX_TICKS_PER_FRAME, n = 0;
+      while (acc >= TICK && n < cap) { acc -= TICK; n++; tick(); }
+      if (n >= cap) acc = 0;                   // teto atingido: descarta a dívida
+    } else {
+      acc = 0;                                 // pausa não acumula dívida
+    }
+
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.draw) continue;
+      try { m.draw(dt); }
+      catch (e) { console.error('[OIKOS] draw("' + m.name + '") lancou:', e); }
+    }
+  }
+
+  var loop = {
+    frame: 0,
+    tickCount: 0,
+    start: function () {
+      if (started) return;                     // DECISÃO: start() idempotente
+      started = true;
+      for (var i = 0; i < modules.length; i++) initModule(modules[i]);
+      lastNow = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+      acc = 0;
+      rafId = global.requestAnimationFrame(step);
+    },
+    // Regra 5.7: pause/resume são os ÚNICOS mutadores de state.paused.
+    pause: function () { global.OIKOS.state.paused = true; },
+    resume: function () { global.OIKOS.state.paused = false; acc = 0; },
+    isPaused: function () { return global.OIKOS.state.paused === true; }
+  };
+
+  // ---------------------------------------------------------------------
+  // Persistência — serializador recursivo ciente de TypedArrays.
+  // ---------------------------------------------------------------------
+  var TA = {
+    Int8Array: Int8Array, Uint8Array: Uint8Array, Uint8ClampedArray: Uint8ClampedArray,
+    Int16Array: Int16Array, Uint16Array: Uint16Array,
+    Int32Array: Int32Array, Uint32Array: Uint32Array,
+    Float32Array: Float32Array, Float64Array: Float64Array
+  };
+
+  function enc(v) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      return { __ta: v.constructor.name, v: Array.prototype.slice.call(v) };
+    }
+    if (Array.isArray(v)) return v.map(enc);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = enc(v[k]);
+      return o;
+    }
+    return v;
+  }
+  function dec(v) {
+    if (v && typeof v === 'object' && typeof v.__ta === 'string' && Array.isArray(v.v)) {
+      var C = TA[v.__ta];
+      if (!C) throw new Error('TypedArray desconhecido: ' + v.__ta);
+      return C.from(v.v);
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = dec(v[k]);
+      return o;
+    }
+    return v;
+  }
+
+  function serialize(state) { return JSON.stringify(enc(state)); }
+
+  function deserialize(json) {
+    try {
+      var raw = JSON.parse(json);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.schemaVersion !== consts.SCHEMA_VERSION) return null;   // versão incompatível
+      return dec(raw);
+    } catch (e) { return null; }
+  }
+
+  // LACUNA: a spec exige localStorage, mas alguns navegadores o negam em
+  // file://. Fallback em memória mantém save/load funcionais sem lançar.
+  var memStore = Object.create(null);
+  function store() {
+    try {
+      if (global.localStorage) { global.localStorage.getItem(consts.SAVE_KEY); return global.localStorage; }
+    } catch (e) { /* bloqueado pelo navegador */ }
+    return {
+      getItem: function (k) { return (k in memStore) ? memStore[k] : null; },
+      setItem: function (k, v) { memStore[k] = String(v); }
+    };
+  }
+
+  function save() {
+    try { store().setItem(consts.SAVE_KEY, serialize(global.OIKOS.state)); }
+    catch (e) { console.error('[OIKOS] save falhou:', e); }
+  }
+
+  function load() {
+    var json;
+    try { json = store().getItem(consts.SAVE_KEY); }
+    catch (e) { return false; }
+    if (!json) return false;
+    var st = deserialize(json);
+    if (!st) return false;                       // estado vigente permanece intocado
+    global.OIKOS.state = st;
+    global.OIKOS.rng = makeRng(st.seed);         // regra 5.6: rng recriado da seed
+    acc = 0;
+    loop.pause();                                // regra 5.7: retoma PAUSADO
+    return true;
+  }
+
+  // Regra 5.6: o rng NÃO é serializado. Após load(), os draws do stream
+  // principal recomeçam da seed; o determinismo ESTRUTURAL se preserva
+  // porque cada módulo usa rng.child('<label>'), derivado só da seed.
+  // LACUNA: seed inicial de boot não especificada — constante fixa
+  // (Math.random é proibido).
+  var DEFAULT_SEED = 1337;
+
+  function reset(newSeed) {
+    // LACUNA: reset() sem argumento não foi especificado — reutiliza a seed atual.
+    var s = (newSeed === undefined || newSeed === null)
+      ? (global.OIKOS.state ? global.OIKOS.state.seed : DEFAULT_SEED)
+      : newSeed;
+    global.OIKOS.state = makeState(s);
+    global.OIKOS.rng = makeRng(s);
+    acc = 0;
+  }
+
+  global.OIKOS = {
+    consts: consts,
+    makeRng: makeRng,
+    rng: makeRng(DEFAULT_SEED),
+    state: makeState(DEFAULT_SEED),
+    makeState: makeState,
+    bus: bus,
+    use: use,
+    loop: loop,
+    save: save,
+    load: load,
+    reset: reset,
+    serialize: serialize,
+    deserialize: deserialize
+  };
+})(window);
+/* ===== OIKOS S1 KERNEL — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S2 WORLDGEN — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var OCEANO = 0, DOCE = 1, AREIA = 2, GRAMA = 3, FERTIL = 4, FLORESTA = 5, PEDRA = 6, MONTANHA = 7;
+  var CACA = 1, PEIXE = 2, COBRE = 3, FERRO = 4, CARVAO = 5;
+
+  // DECISÃO: faixa de borda forçada a oceano — o aceite exige perímetro 100%
+  // marítimo em toda seed, e uma máscara radial folgada garante isso por
+  // construção, sem depender de sorte do ruído.
+  var MARGEM = 3;
+  // Nível do mar ADAPTATIVO por quantil em vez de limiar fixo: o aceite
+  // "terra >= 900" passa a ser estrutural, não estatístico.
+  // Variabilidade (opção B da auditoria): o alvo de terra e a fração de floresta
+  // são SORTEADOS por seed, dentro de faixas que preservam os aceites.
+  // DECISÃO: o piso do alvo é 1010 e não 950 — o quantil é calculado ANTES de o
+  // rio converter terra em água doce, e 60 tiles de folga mantêm o piso real
+  // acima de 900 mesmo num rio longo, sem estourar o teto de 1350.
+  var TERRA_MIN = 1010, TERRA_MAX = 1350;
+  var FLORESTA_MIN = 0.12, FLORESTA_MAX = 0.26;
+
+  function smooth(t) { return t * t * (3 - 2 * t); }
+
+  function malha(rng, n) {
+    var g = new Float32Array(n * n);
+    for (var i = 0; i < g.length; i++) g[i] = rng.f();
+    return { g: g, n: n };
+  }
+
+  // amostra bilinear com suavização e wrap toroidal
+  function amostra(L, x, y) {
+    var n = L.n, fx = x * n, fy = y * n;
+    var ix = Math.floor(fx), iy = Math.floor(fy);
+    var tx = smooth(fx - ix), ty = smooth(fy - iy);
+    var x0 = ((ix % n) + n) % n, y0 = ((iy % n) + n) % n;
+    var x1 = (x0 + 1) % n, y1 = (y0 + 1) % n;
+    var topo = L.g[y0 * n + x0] + (L.g[y0 * n + x1] - L.g[y0 * n + x0]) * tx;
+    var base = L.g[y1 * n + x0] + (L.g[y1 * n + x1] - L.g[y1 * n + x0]) * tx;
+    return topo + (base - topo) * ty;
+  }
+
+  // fBm de 4 oitavas (malhas 4, 8, 16, 32), amplitude meio a meio
+  function fbm(rng, oitavas, base) {
+    var Ls = [], n = base;
+    for (var i = 0; i < oitavas; i++) { Ls.push(malha(rng, n)); n *= 2; }
+    return function (x, y) {
+      var amp = 1, soma = 0, norma = 0;
+      for (var j = 0; j < Ls.length; j++) { soma += amp * amostra(Ls[j], x, y); norma += amp; amp *= 0.5; }
+      return soma / norma;
+    };
+  }
+
+  // --- rio: descida greedy do pico ao mar -------------------------------
+  function proximoLeito(T, e, M, cur, visto) {
+    var cx = cur % M, cy = (cur - cx) / M, alvo = -1, menor = e[cur];
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      var ni = ny * M + nx;
+      if (T[ni] === OCEANO) return { mar: true, i: ni };
+      if (visto[ni]) continue;
+      if (e[ni] < menor) { menor = e[ni]; alvo = ni; }
+    }
+    return { mar: false, i: alvo };
+  }
+
+  function lago(T, M, cur) {
+    var cx = cur % M, cy = (cur - cx) / M, n = 0;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      var ni = ny * M + nx;
+      if (T[ni] !== OCEANO && T[ni] !== DOCE) { T[ni] = DOCE; n++; }
+    }
+    return n;
+  }
+
+  function cavarRio(T, e, M) {
+    // nascente = ponto mais alto da montanha. Sem montanha não há nascente e a
+    // ilha fica sem rio (hasRiver:false) — hidrelétricas somem do menu futuro.
+    var pico = -1, melhor = -Infinity;
+    for (var i = 0; i < T.length; i++) if (T[i] === MONTANHA && e[i] > melhor) { melhor = e[i]; pico = i; }
+    if (pico < 0) return { len: 0, chegou: false };
+
+    var cur = pico, len = 0, chegou = false, passos = 0;
+    var visto = new Uint8Array(T.length);
+    while (passos++ < T.length) {
+      visto[cur] = 1;
+      if (T[cur] !== OCEANO && T[cur] !== DOCE) { T[cur] = DOCE; len++; }
+      var p = proximoLeito(T, e, M, cur, visto);
+      if (p.mar) { chegou = true; break; }
+      if (p.i < 0) { len += lago(T, M, cur); break; }   // depressão: vira lago
+      cur = p.i;
+    }
+    return { len: len, chegou: chegou };
+  }
+
+  function perto(T, M, raio) {   // marca tiles a até `raio` passos de água doce
+    var N = T.length, dist = new Uint8Array(N), fila = [];
+    for (var i = 0; i < N; i++) if (T[i] === DOCE) { dist[i] = 1; fila.push(i); }
+    for (var d = 1; d <= raio; d++) {
+      var prox = [];
+      for (var f = 0; f < fila.length; f++) {
+        var cur = fila[f], cx = cur % M, cy = (cur - cx) / M;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          var nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+          var ni = ny * M + nx;
+          if (!dist[ni]) { dist[ni] = 1; prox.push(ni); }
+        }
+      }
+      fila = prox;
+    }
+    return dist;
+  }
+
+  function temTerraAoLado(T, M, i) {
+    var cx = i % M, cy = (i - cx) / M;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+      if (T[ny * M + nx] >= AREIA) return true;
+    }
+    return false;
+  }
+
+  // generate() — determinística pela seed vigente. Escreve APENAS em
+  // state.tiles.{terrain,resource} e em state.geo.
+  function generate() {
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, R = st.tiles.resource;
+    T.fill(OCEANO); R.fill(0);
+
+    // 0. premissas da ilha, sorteadas por seed
+    // LACUNA: a carta fixa os streams 'elev', 'fert', 'forest' e 'ore'. A opção B
+    // da auditoria exige um sorteio de premissas por seed, então declaro o label
+    // novo 'world' em vez de roubar draws de um stream de contrato.
+    var rw = O.rng.child('world');
+    var terraAlvo = TERRA_MIN + rw.i(TERRA_MAX - TERRA_MIN + 1);
+    var florestaFrac = FLORESTA_MIN + rw.f() * (FLORESTA_MAX - FLORESTA_MIN);
+
+    // 1. elevação: fBm 4 oitavas × máscara radial
+    var ruidoE = fbm(O.rng.child('elev'), 4, 4);
+    var e = new Float32Array(N);
+    var c = (M - 1) / 2, raio = (M / 2) - MARGEM;
+    for (var y = 0; y < M; y++) for (var x = 0; x < M; x++) {
+      var dx = (x - c) / raio, dy = (y - c) / raio;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      e[y * M + x] = d >= 1 ? 0 : ruidoE(x / M, y / M) * (1 - smooth(d));
+    }
+
+    // 2. nível do mar por quantil
+    var ord = Float32Array.from(e); ord.sort();
+    var alvo = Math.min(terraAlvo, N - 1);
+    var mar = ord[N - alvo], maxE = ord[N - 1];
+    if (!(mar > 0)) mar = 1e-6;                       // ilha degenerada
+    if (!(maxE > mar)) maxE = mar + 1e-6;
+
+    // 3. faixas de terreno por altura normalizada
+    var alt = new Float32Array(N), i;
+    for (i = 0; i < N; i++) {
+      if (e[i] < mar || e[i] <= 0) continue;          // permanece oceano
+      var h = (e[i] - mar) / (maxE - mar);
+      alt[i] = h;
+      T[i] = h < 0.10 ? AREIA : h < 0.70 ? GRAMA : h < 0.88 ? PEDRA : MONTANHA;
+    }
+
+    // 4. rio
+    var rio = cavarRio(T, e, M);
+
+    // 5. solo fértil: ruído próprio, amplificado na várzea do rio
+    var ruidoF = fbm(O.rng.child('fert'), 4, 4);
+    var varzea = perto(T, M, 2);
+    for (i = 0; i < N; i++) {
+      if (T[i] !== GRAMA) continue;
+      var f = ruidoF((i % M) / M, Math.floor(i / M) / M) + (varzea[i] ? 0.22 : 0);
+      if (f > 0.60) T[i] = FERTIL;
+    }
+
+    // 6. floresta: os K tiles de maior ruído entre grama e fértil
+    var ruidoV = fbm(O.rng.child('forest'), 4, 4);
+    var terra = 0, eleg = [], nota = new Float32Array(N);
+    for (i = 0; i < N; i++) {
+      if (T[i] >= AREIA) terra++;
+      if (T[i] === GRAMA || T[i] === FERTIL) {
+        eleg.push(i);
+        nota[i] = ruidoV((i % M) / M, Math.floor(i / M) / M);
+      }
+    }
+    eleg.sort(function (a, b) { return (nota[b] - nota[a]) || (a - b); });  // ordem total
+    var kF = Math.min(eleg.length, Math.round(florestaFrac * terra));
+    for (i = 0; i < kF; i++) T[eleg[i]] = FLORESTA;
+
+    // 7. veios — só em rocha e montanha (emenda da auditoria): "ilha montanhosa
+    // = ilha rica em minério" volta a ser premissa que varia entre partidas.
+    // DECISÃO: o tipo é estratificado DENTRO da faixa mineira (altura relativa
+    // a [0.70, 1.0]). Com os limiares absolutos de antes, todo veio cairia em
+    // ferro e cobre/carvão desapareceriam do jogo.
+    var ro = O.rng.child('ore');
+    var mineral = [];
+    for (i = 0; i < N; i++) if (T[i] === PEDRA || T[i] === MONTANHA) mineral.push(i);
+    var veios = mineral.length ? 10 + ro.i(9) : 0, postos = 0;
+    for (var v = 0; v < veios; v++) {
+      var semente = ro.pick(mineral);
+      var rel = (alt[semente] - 0.70) / 0.30;
+      var tipo = rel < 0.35 ? COBRE : rel < 0.70 ? CARVAO : FERRO;
+      var tam = 2 + ro.i(4), postosNoVeio = 0;
+      var vx = semente % M, vy = (semente - vx) / M;
+      for (var s = 0; s < tam; s++) {
+        var nx = vx + ro.i(3) - 1, ny = vy + ro.i(3) - 1;
+        if (nx < 0 || ny < 0 || nx >= M || ny >= M) continue;
+        var ni = ny * M + nx;
+        if ((T[ni] !== PEDRA && T[ni] !== MONTANHA) || R[ni] !== 0) continue;
+        R[ni] = tipo; postosNoVeio++;
+      }
+      if (postosNoVeio) postos++;
+    }
+
+    // 8. caça na floresta e peixe na água de beira
+    // LACUNA: a carta lista caça(1) e peixe(2) no domínio de resource e a S7
+    // depende de pesca, mas não diz qual stream os coloca. Reaproveita 'ore'
+    // (o stream de recursos) em vez de inventar um label fora do contrato.
+    for (i = 0; i < N; i++) if (T[i] === FLORESTA && R[i] === 0 && ro.f() < 0.18) R[i] = CACA;
+    for (i = 0; i < N; i++) {
+      if (T[i] !== OCEANO && T[i] !== DOCE) continue;
+      if (R[i] !== 0 || ro.f() >= 0.35) continue;
+      if (temTerraAoLado(T, M, i)) R[i] = PEIXE;
+    }
+
+    // 9. resumo geográfico consumido pelas decisões sensíveis a contexto
+    var landTiles = 0, forestTiles = 0, fertileTiles = 0, montanhas = 0;
+    for (i = 0; i < N; i++) {
+      if (T[i] < AREIA) continue;
+      landTiles++;
+      if (T[i] === FLORESTA) forestTiles++;
+      else if (T[i] === FERTIL) fertileTiles++;
+      if (T[i] === MONTANHA) montanhas++;
+    }
+    st.geo = {
+      riverLength: rio.len,
+      hasRiver: rio.chegou,
+      forestTiles: forestTiles,
+      fertileTiles: fertileTiles,
+      oreVeins: postos,
+      mountainness: landTiles ? montanhas / landTiles : 0,
+      landTiles: landTiles
+    };
+    return st.geo;
+  }
+
+  O.Worldgen = { generate: generate };
+})(window);
+/* ===== OIKOS S2 WORLDGEN — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S4 ELLIPTIC — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var K_MAX = 0.9999;                       // clamp contratual (seção 6, S4)
+
+  function num(v, def) { v = Number(v); return isFinite(v) ? v : def; }
+
+  // clampK — nunca lança: |k| finito, teto em 0.9999.
+  // DECISÃO: k negativo usa |k| (sn/cn/dn dependem só de k²); NaN/∞ viram 0.
+  function clampK(k) {
+    k = Math.abs(num(k, 0));
+    return k > K_MAX ? K_MAX : k;
+  }
+
+  // K(k) — integral elíptica completa de 1a espécie, AGM (seção 7 da carta).
+  function K(k) {
+    k = clampK(k);
+    var a = 1, b = Math.sqrt(1 - k * k), t, guard = 0;
+    while (Math.abs(a - b) > 1e-14 && guard++ < 64) {
+      t = (a + b) / 2; b = Math.sqrt(a * b); a = t;
+    }
+    return Math.PI / (2 * a);
+  }
+
+  // amp(u,k) — amplitude phi pela descida de Landen (seção 7). Base ÚNICA de
+  // sn/cn/dn: uma só phi elimina qualquer ramificação de sinal entre as três.
+  function amp(u, k) {
+    k = clampK(k);
+    u = num(u, 0);
+    var A = [1], B = [Math.sqrt(1 - k * k)], C = [k];
+    while (Math.abs(A[A.length - 1] - B[B.length - 1]) > 1e-13 && C.length < 12) {
+      var a = A[A.length - 1], b = B[B.length - 1];
+      A.push((a + b) / 2); B.push(Math.sqrt(a * b)); C.push((a - b) / 2);
+    }
+    var n = C.length - 1;
+    var phi = Math.pow(2, n) * A[n] * u;
+    for (var i = n; i >= 1; i--) {
+      var s = (C[i] / A[i]) * Math.sin(phi);
+      if (s > 1) s = 1; else if (s < -1) s = -1;   // arredondamento não vira NaN
+      phi = (phi + Math.asin(s)) / 2;
+    }
+    return phi;
+  }
+
+  function sn(u, k) { return Math.sin(amp(u, k)); }
+  function cn(u, k) { return Math.cos(amp(u, k)); }
+  function dn(u, k) {
+    var kk = clampK(k), s = Math.sin(amp(u, kk));
+    var v = 1 - kk * kk * s * s;
+    return Math.sqrt(v < 0 ? 0 : v);              // v só fica <0 por arredondamento
+  }
+
+  // Pendulum — duas formas:
+  //   standalone {omega, k, u0} : k CONGELADO na construção, u local
+  //   bound      {id, omega}    : lê state.pendulums[id].k VIVO a cada leitura
+  //                               e escreve u de volta no estado
+  // Nenhuma referência de estado é capturada em closure (reset() reatribui).
+  function Pendulum(cfg) {
+    cfg = cfg || {};
+    var bound = (cfg.id !== undefined && cfg.id !== null);
+    var p = { id: bound ? String(cfg.id) : null, bound: bound, omega: num(cfg.omega, 1) };
+
+    function slot() { var ps = O.state.pendulums; return ps ? ps[p.id] : null; }
+
+    if (bound) {
+      Object.defineProperty(p, 'u', {
+        enumerable: true,
+        get: function () { var s = slot(); return s ? num(s.u, 0) : 0; },
+        set: function (v) { var s = slot(); if (s) s.u = num(v, 0); }
+      });
+      Object.defineProperty(p, 'k', {
+        enumerable: true,
+        get: function () { var s = slot(); return clampK(s ? s.k : 0); }
+      });
+    } else {
+      p.u = num(cfg.u0, 0);
+      p.k = clampK(cfg.k);                        // congelado
+    }
+
+    Object.defineProperty(p, 'pos', {             // posição = sn(u, k)
+      enumerable: true,
+      get: function () { return sn(p.u, p.k); }
+    });
+    // EMENDA v1.5 D21: get vel = omega·cn(u,k) — já presente na devolução
+    // original (proveniência marcada na extração; nenhuma mudança semântica).
+    // D21: vel = omega·cn(u,k) — a velocidade canônica do pêndulo elíptico
+    // (dθ/dt ∝ cn), NÃO a derivada numérica de pos (que seria omega·cn·dn).
+    // O contrato fixa esta forma; os testes a tratam como tal.
+    Object.defineProperty(p, 'vel', {
+      enumerable: true,
+      get: function () { return p.omega * cn(p.u, p.k); }
+    });
+
+    // step(dt): dt em ANOS, omega em rad/ano.
+    p.step = function (dt) { p.u = p.u + p.omega * num(dt, 0); return p.u; };
+    // período do movimento: 4·K(k)/omega — diverge quando k → 1.
+    p.period = function () { var w = Math.abs(p.omega); return w > 0 ? 4 * K(p.k) / w : Infinity; };
+    return p;
+  }
+
+  // couple(ps, strength, dt): m = média das posições; cada u é puxado na direção
+  // da média. A média é calculada ANTES de qualquer mutação (acoplamento síncrono).
+  function couple(ps, strength, dt) {
+    if (!ps || !ps.length) return;
+    var s = num(strength, 0), d = num(dt, 0), m = 0, i;
+    for (i = 0; i < ps.length; i++) m += ps[i].pos;
+    m /= ps.length;
+    if (!isFinite(m)) return;
+    for (i = 0; i < ps.length; i++) {
+      var du = s * d * (m - ps[i].pos);
+      if (isFinite(du)) ps[i].u = ps[i].u + du;
+    }
+  }
+
+  // DECISÃO: amp() não é exportada — a carta fixa a superfície em
+  // {K, sn, cn, dn, Pendulum, couple} e ampliá-la seria extensão silenciosa.
+  O.Elliptic = { K: K, sn: sn, cn: cn, dn: dn, Pendulum: Pendulum, couple: couple };
+})(window);
+/* ===== OIKOS S4 ELLIPTIC — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S6 CHRONICLES — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var TYPES = { ato: 1, evento: 1, consequencia: 1, desastre: 1, marco: 1 };
+
+  var counter = 0;        // sufixo do último id emitido
+  var lastState = null;   // identidade do estado em que o contador foi calculado
+  var probes = [];        // SONDAS VOLÁTEIS: nunca entram no save
+
+  // sync() — o kernel REATRIBUI state em reset()/load(). Comparar a identidade
+  // do objeto é o gatilho barato e suficiente para reidratar o contador a partir
+  // do maior id presente na crônica restaurada.
+  function sync() {
+    if (O.state === lastState) return;
+    lastState = O.state;
+    var ch = O.state.chronicle || [], max = 0;
+    for (var i = 0; i < ch.length; i++) {
+      var m = ch[i] && typeof ch[i].id === 'string' ? /^c(\d+)$/.exec(ch[i].id) : null;
+      if (m) { var n = +m[1]; if (n > max) max = n; }
+    }
+    counter = max;
+  }
+
+  // log(entry) — preenche id/year/era; NUNCA lança: entrada inválida vira
+  // console.error + null.
+  // D25: valida APENAS type. titulo/prosa/ato/efeitoMedido/refs são do schema
+  // (D23) mas seu conteúdo é responsabilidade do chamador — o módulo não limpa
+  // culpa de quem chama.
+  function log(entry) {
+    sync();
+    if (!entry || typeof entry !== 'object' || !TYPES[entry.type]) {
+      console.error('[OIKOS Chron] entrada inválida (type ausente ou fora do vocabulário):', entry);
+      return null;
+    }
+    var e = {};
+    for (var k in entry) if (Object.prototype.hasOwnProperty.call(entry, k)) e[k] = entry[k];
+    if (e.refs !== undefined && !Array.isArray(e.refs)) e.refs = [e.refs];
+    e.id = 'c' + (++counter);
+    e.year = O.state.year;
+    e.era = O.state.era;
+    O.state.chronicle.push(e);
+    O.bus.emit('chron:entry', e);
+    return e;
+  }
+
+  function idNum(e) {
+    var m = e && typeof e.id === 'string' ? /^c(\d+)$/.exec(e.id) : null;
+    return m ? +m[1] : Infinity;
+  }
+
+  // query({era, type, source}) — filtros combináveis; ausentes não restringem.
+  // D22/D23: "source casa por refs OU ato" = a entrada casa se cita source em
+  // refs, se aponta para ele no campo ato, ou se ela PRÓPRIA é o ato de origem
+  // (type 'ato' com id === source). O campo 'source' não pertence ao schema.
+  function query(f) {
+    sync();
+    f = f || {};
+    var ch = O.state.chronicle || [];
+    var out = [];
+    for (var i = 0; i < ch.length; i++) {
+      var e = ch[i];
+      if (!e) continue;
+      if (f.era !== undefined && e.era !== f.era) continue;
+      if (f.type !== undefined && e.type !== f.type) continue;
+      if (f.source !== undefined) {
+        var porRefs = Array.isArray(e.refs) && e.refs.indexOf(f.source) >= 0;
+        var porVinculo = e.ato !== undefined && e.ato === f.source;
+        var ehOAto = e.type === 'ato' && e.id === f.source;
+        if (!porRefs && !porVinculo && !ehOAto) continue;
+      }
+      out.push(e);
+    }
+    return out;
+  }
+
+  // timeline() — cópia ordenada por ano e, no empate, por ordem de emissão.
+  // Ordenação total e estável: dois ids nunca colidem.
+  function timeline() {
+    sync();
+    return (O.state.chronicle || []).slice().sort(function (a, b) {
+      return (a.year - b.year) || (idNum(a) - idNum(b));
+    });
+  }
+
+  // probe({source, every, fn}) — sonda periódica. fn(year, state) devolvendo
+  // não-nulo gera uma 'consequencia' com refs:[source] E ato:source (D22).
+  // VOLÁTIL por contrato: o módulo dono re-registra a sonda após load().
+  function probe(cfg) {
+    sync();
+    if (!cfg || typeof cfg.fn !== 'function') {
+      console.error('[OIKOS Chron] sonda inválida (fn ausente):', cfg);
+      return null;
+    }
+    var every = Math.floor(Number(cfg.every));
+    if (!isFinite(every) || every < 1) every = 1;
+    var p = { source: cfg.source, every: every, fn: cfg.fn, born: O.state.year, dead: false };
+    probes.push(p);
+    return {
+      cancel: function () {
+        p.dead = true;
+        var i = probes.indexOf(p);
+        if (i >= 0) probes.splice(i, 1);
+      }
+    };
+  }
+
+  // Escuta de ticks EXCLUSIVAMENTE pelo bus (D13): update() PRODUZ o ano,
+  // o handler de sim:tick CONSOME o ano já consolidado. Nenhum OIKOS.use aqui.
+  O.bus.on('sim:tick', function (ev) {
+    sync();
+    var year = (ev && typeof ev.year === 'number') ? ev.year : O.state.year;
+    var snap = probes.slice();                 // sonda criada/cancelada durante o
+    for (var i = 0; i < snap.length; i++) {    // disparo não corrompe a iteração
+      var p = snap[i];
+      if (p.dead) continue;
+      if (((year - p.born) % p.every) !== 0) continue;
+      var out;
+      try { out = p.fn(year, O.state); }
+      catch (err) { console.error('[OIKOS Chron] sonda de "' + p.source + '" lancou:', err); continue; }
+      if (out === null || out === undefined) continue;
+      var entry = (typeof out === 'object') ? out : { titulo: String(out) };
+      entry.type = 'consequencia';             // tipo, refs e ato são do contrato
+      entry.refs = [p.source];
+      // EMENDA v1.5 D22: entry.ato = p.source além de refs:[p.source] — já
+      // presente na devolução original (proveniência; nenhuma mudança semântica).
+      entry.ato = p.source;                    // D22: vínculo ato -> consequencia
+      log(entry);                              //      lido pelo epílogo (S11)
+    }
+  });
+
+  O.Chron = { log: log, query: query, timeline: timeline, probe: probe };
+})(window);
+/* ===== OIKOS S6 CHRONICLES — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S3 RENDER — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Paleta por terrain (0..7). Cor base; a variação por tile multiplica o
+  // brilho, e a tabela de cores é PRÉ-COMPUTADA por bucket — nenhuma string
+  // de cor é montada dentro do laço de desenho.
+  // ---------------------------------------------------------------------
+  var BASE = [
+    [27, 58, 92],    // 0 oceano
+    [47, 127, 179],  // 1 água doce
+    [217, 200, 154], // 2 areia
+    [111, 156, 74],  // 3 grama
+    [138, 168, 72],  // 4 fértil
+    [47, 90, 46],    // 5 floresta
+    [138, 133, 124], // 6 pedra
+    [104, 99, 94]    // 7 montanha
+  ];
+  var COR_RESOURCE = [null, '#b4553a', '#7fd4e8', '#c87f3a', '#9aa4b0', '#3a3a42'];
+  var BUCKETS = 8;
+  var ALTURA_PREDIO = 24;      // px de sprite, base do culling com margem
+  var AGUA_SUJA = [92, 84, 58];
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function hex(r, g, b) {
+    return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  }
+
+  // tabela[terrain][bucket] — montada uma vez por carga do módulo.
+  var TABELA = (function () {
+    var t = [], i, b;
+    for (i = 0; i < BASE.length; i++) {
+      t[i] = [];
+      for (b = 0; b < BUCKETS; b++) {
+        var f = 0.90 + (b / (BUCKETS - 1)) * 0.20;   // 0.90 .. 1.10
+        t[i][b] = hex(clamp(BASE[i][0] * f, 0, 255),
+                      clamp(BASE[i][1] * f, 0, 255),
+                      clamp(BASE[i][2] * f, 0, 255));
+      }
+    }
+    return t;
+  })();
+
+  // ---------------------------------------------------------------------
+  // Cache de variação visual, CHAVEADO PELA SEED (spec S3). Nunca se chama
+  // rng dentro de draw(): o bucket de cada tile é sorteado uma única vez por
+  // seed, no stream 'render'.
+  // ---------------------------------------------------------------------
+  var cache = { seed: null, bucket: null };
+
+  function garantirCache() {
+    var st = O.state, N = O.consts.MAP * O.consts.MAP;
+    if (cache.seed === st.seed && cache.bucket && cache.bucket.length === N) {
+      return cache.bucket;
+    }
+    var r = O.makeRng(st.seed).child('render');
+    var b = new Uint8Array(N);
+    for (var i = 0; i < N; i++) b[i] = r.i(BUCKETS);
+    cache.seed = st.seed;
+    cache.bucket = b;
+    return b;
+  }
+
+  // ---------------------------------------------------------------------
+  // Geometria isométrica 2:1. Meia-largura e meia-altura SEMPRE lidas de
+  // consts (regra 5.8) — a spec cita 32 e 16, que são TILE_W/2 e TILE_H/2.
+  // ---------------------------------------------------------------------
+  function HW() { return O.consts.TILE_W / 2; }
+  function HH() { return O.consts.TILE_H / 2; }
+  function zoomVivo() {
+    var z = Number(O.state.camera.zoom);
+    if (!isFinite(z) || z <= 0) z = 1;
+    return clamp(z, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+  }
+
+  // DECISÃO: project devolve o CENTRO do losango do tile, em pixels de tela,
+  // já com câmera e zoom aplicados. camera.x/y é deslocamento em pixels (o
+  // ponto de tela onde vive o tile (0,0)); não precisa das dimensões do
+  // canvas, o que mantém project/unproject puros e testáveis sem browser.
+  function project(tx, ty) {
+    var c = O.state.camera, z = zoomVivo();
+    return {
+      x: (tx - ty) * HW() * z + c.x,
+      y: (tx + ty) * HH() * z + c.y
+    };
+  }
+
+  // unproject — inverso exato: qual tile contém este ponto de tela.
+  // Os losangos |dx|/HW + |dy|/HH <= 1 centrados nos tiles ladrilham o plano
+  // sem sobreposição, então o centro MAIS PRÓXIMO é o losango que contém o
+  // ponto: arredondar resolve o picking exato, inclusive nos 4 cantos.
+  function unproject(sx, sy) {
+    var c = O.state.camera, z = zoomVivo();
+    var u = (sx - c.x) / (HW() * z);
+    var v = (sy - c.y) / (HH() * z);
+    return { x: Math.round((u + v) / 2), y: Math.round((v - u) / 2) };
+  }
+
+  // ---------------------------------------------------------------------
+  // LACUNA: a carta define "tiles fora da fronteira não são zoneáveis" na
+  // spec S9, que ainda não existe. Escolho a regra mais simples que já é
+  // verdadeira hoje: dentro do mapa e em terra. Quando S9 entrar, a checagem
+  // de fronteira soma-se a esta — nada aqui precisará ser reescrito.
+  // DECISÃO: montanha (7) É zoneável; a S9 prevê "montanha ×2" no custo de
+  // decreto, o que pressupõe que montanha pode ser tomada.
+  // ---------------------------------------------------------------------
+  function isZoneable(x, y) {
+    var M = O.consts.MAP;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    if (!isFinite(x) || !isFinite(y)) return false;
+    if (Math.floor(x) !== x || Math.floor(y) !== y) return false;
+    if (x < 0 || y < 0 || x >= M || y >= M) return false;
+    return O.state.tiles.terrain[y * M + x] >= 2;   // 0 oceano, 1 água doce
+  }
+
+  // ---------------------------------------------------------------------
+  // DECISÃO: visibleTiles e paintOrder trafegam ÍNDICES (i = y*MAP+x), não
+  // objetos {x,y}. É a convenção de indexação da própria carta (5.3) e é o
+  // que faz o orçamento de 5 ms para 1000 chamadas ser alcançável — devolver
+  // ~500 objetos por chamada seria meio milhão de alocações no teste.
+  // ---------------------------------------------------------------------
+
+  // Ordem do pintor: (x+y) ASC e, no empate, y ASC. Assim (11,9) é pintado
+  // ANTES de (10,10) — ambos somam 20 — e a casa em (10,10) oclui (11,9),
+  // exatamente como a spec exige. O terceiro critério (x ASC) só garante
+  // ordem total determinística.
+  function paintOrder(indices) {
+    var M = O.consts.MAP;
+    return Array.prototype.slice.call(indices).sort(function (a, b) {
+      var ax = a % M, ay = (a - ax) / M;
+      var bx = b % M, by = (b - bx) / M;
+      return ((ax + ay) - (bx + by)) || (ay - by) || (ax - bx);
+    });
+  }
+
+  // Culling: caixa envolvente em espaço de tile dos 4 cantos da viewport,
+  // folgada em 1 tile + a altura do sprite convertida em tiles.
+  // DECISÃO: devolve Int16Array e não Array de objetos. O aceite exige
+  // 1000×(unproject+visibleTiles) < 5 ms; a ~1100 tiles visíveis por chamada
+  // isso é 1,1 milhão de escritas, e alocar objeto por tile não cabe no
+  // orçamento. Int16Array comporta o índice máximo (56²−1 = 3135).
+  function visibleTiles(w, h) {
+    var M = O.consts.MAP;
+    w = Number(w); h = Number(h);
+    if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return new Int16Array(0);
+
+    var margem = 1 + Math.ceil(ALTURA_PREDIO / O.consts.TILE_H);
+    var a = unproject(0, 0), b = unproject(w, 0);
+    var c = unproject(0, h), d = unproject(w, h);
+
+    var minX = Math.min(a.x, b.x, c.x, d.x) - margem;
+    var maxX = Math.max(a.x, b.x, c.x, d.x) + margem;
+    var minY = Math.min(a.y, b.y, c.y, d.y) - margem;
+    var maxY = Math.max(a.y, b.y, c.y, d.y) + margem;
+
+    if (minX < 0) minX = 0; if (minY < 0) minY = 0;
+    if (maxX > M - 1) maxX = M - 1; if (maxY > M - 1) maxY = M - 1;
+
+    if (maxX < minX || maxY < minY) return new Int16Array(0);
+    var out = new Int16Array((maxX - minX + 1) * (maxY - minY + 1)), n = 0;
+    for (var y = minY; y <= maxY; y++) {
+      var base = y * M;
+      for (var x = minX; x <= maxX; x++) out[n++] = base + x;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
+  // Câmera. camZoom é a ÚNICA fonte do zoom com ponto-fixo: o ponto de mundo
+  // sob o cursor permanece sob o cursor. O handler da roda delega aqui, e o
+  // harness testa a invariância pela mesma função (via state.camera).
+  // ---------------------------------------------------------------------
+  function camZoom(sx, sy, fator) {
+    var c = O.state.camera;
+    var z0 = zoomVivo();
+    var z1 = clamp(z0 * fator, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+    if (z1 === z0) return;
+    // ponto de mundo sob o cursor, em unidades de tela a zoom 1
+    var wx = (sx - c.x) / z0, wy = (sy - c.y) / z0;
+    c.x = sx - wx * z1;
+    c.y = sy - wy * z1;
+    c.zoom = z1;
+  }
+
+  function centrarCamera(w, h) {
+    var c = O.state.camera, M = O.consts.MAP, z = zoomVivo();
+    c.x = w / 2;
+    c.y = h / 2 - ((M - 1) * HH() * z);
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas e entrada. S3 é uma das duas exceções autorizadas ao DOM.
+  // ---------------------------------------------------------------------
+  // EMENDA v1.9 D36: 'centrado' guarda a IDENTIDADE do estado já centrado, não
+  // um booleano — reset() e load() reatribuem o objeto e a câmera precisa
+  // voltar ao centro da ilha nova.
+  var cv = null, ctx = null, ligado = false, centrado = null;
+  var arrastando = false, ultimoX = 0, ultimoY = 0;
+
+  function pegarCanvas() {
+    if (ctx) return ctx;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    cv = document.getElementById('oikos');
+    if (!cv) {
+      cv = document.createElement('canvas');
+      cv.id = 'oikos';
+      cv.width = 960; cv.height = 540;
+      if (document.body) document.body.appendChild(cv);
+    }
+    if (typeof cv.getContext !== 'function') { cv = null; return null; }
+    ctx = cv.getContext('2d');
+    if (ctx && !ligado) ligarEntrada();
+    return ctx;
+  }
+
+  function posNoCanvas(ev) {
+    var r = (cv && cv.getBoundingClientRect) ? cv.getBoundingClientRect() : { left: 0, top: 0 };
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  function ligarEntrada() {
+    ligado = true;
+    cv.addEventListener('mousedown', function (ev) {
+      arrastando = true;
+      var p = posNoCanvas(ev); ultimoX = p.x; ultimoY = p.y;
+    });
+    global.addEventListener('mouseup', function () { arrastando = false; });
+    cv.addEventListener('mousemove', function (ev) {
+      var p = posNoCanvas(ev);
+      if (arrastando) {
+        O.state.camera.x += p.x - ultimoX;
+        O.state.camera.y += p.y - ultimoY;
+        ultimoX = p.x; ultimoY = p.y;
+      }
+      var t = unproject(p.x, p.y);
+      O.state.hover = isZoneable(t.x, t.y) || dentro(t.x, t.y) ? { x: t.x, y: t.y } : null;
+    });
+    cv.addEventListener('mouseleave', function () { O.state.hover = null; });
+    cv.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      var p = posNoCanvas(ev);
+      camZoom(p.x, p.y, ev.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+  }
+
+  function dentro(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  // ---------------------------------------------------------------------
+  // Desenho. Camadas: oceano de fundo → terreno → resource → fronteira →
+  // edifícios por paintOrder → overlay de hover.
+  // draw() altera SOMENTE camera e hover.
+  // ---------------------------------------------------------------------
+  function losango(g, px, py, hw, hh) {
+    g.beginPath();
+    g.moveTo(px, py - hh);
+    g.lineTo(px + hw, py);
+    g.lineTo(px, py + hh);
+    g.lineTo(px - hw, py);
+    g.closePath();
+  }
+
+  function corDaAgua(terr, i, bucket) {
+    var p = clamp(O.state.tiles.pollution[i] || 0, 0, 1);
+    if (p <= 0) return TABELA[terr][bucket];
+    var b = BASE[terr];
+    return hex(b[0] + (AGUA_SUJA[0] - b[0]) * p,
+               b[1] + (AGUA_SUJA[1] - b[1]) * p,
+               b[2] + (AGUA_SUJA[2] - b[2]) * p);
+  }
+
+  function draw(dt) {
+    var g = pegarCanvas();
+    if (!g) return;                     // sob Node não há canvas: no-op limpo
+
+    var st = O.state, M = O.consts.MAP;
+    var W = cv.width, H = cv.height;
+    // EMENDA v1.9 D36: compara identidade, não flag booleana.
+    if (centrado !== st) { centrarCamera(W, H); centrado = st; }
+
+    var z = zoomVivo();
+    st.camera.zoom = z;                 // clamp espelhado no estado
+    var hw = HW() * z, hh = HH() * z;
+    var bucket = garantirCache();
+    var T = st.tiles.terrain, R = st.tiles.resource;
+    var B = st.tiles.building, OWN = st.tiles.owner;
+
+    // 1. oceano de fundo
+    g.fillStyle = TABELA[0][3];
+    g.fillRect(0, 0, W, H);
+
+    var vis = visibleTiles(W, H);
+    var i, k, x, y, p;
+
+    // 2. terreno
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k]; x = i % M; y = (i - x) / M;
+      var terr = T[i];
+      // EMENDA v1.9 D35: oceano poluído NÃO pode ser pulado. O retângulo de
+      // fundo é mar limpo, e corDaAgua é quem interpola pollution[] — pular
+      // terrain 0 deixava oceano sujo com cor de mar limpo.
+      if (terr === 0 && !(st.tiles.pollution[i] > 0)) continue;
+      p = project(x, y);
+      g.fillStyle = (terr <= 1) ? corDaAgua(terr, i, bucket[i]) : TABELA[terr][bucket[i]];
+      losango(g, p.x, p.y, hw, hh);
+      g.fill();
+    }
+
+    // 3. marcadores de resource
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!R[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      g.fillStyle = COR_RESOURCE[R[i]] || '#fff';
+      g.beginPath();
+      g.arc(p.x, p.y, Math.max(1.5, 3 * z), 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // 4. fronteira — contorno dos tiles com dono
+    g.strokeStyle = 'rgba(240,225,160,0.75)';
+    g.lineWidth = Math.max(1, z);
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!OWN[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+
+    // 5. edifícios na ordem do pintor (placeholder de caixa 3-tons)
+    var ordem = paintOrder(vis);
+    for (k = 0; k < ordem.length; k++) {
+      i = ordem[k];
+      if (!B[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      var alt = ALTURA_PREDIO * z * (1 + (st.tiles.level[i] || 0) * 0.5);
+      g.fillStyle = '#8d7f6a';                                  // topo
+      losango(g, p.x, p.y - alt, hw * 0.7, hh * 0.7);
+      g.fill();
+      g.fillStyle = '#6d6152';                                  // face esquerda
+      g.beginPath();
+      g.moveTo(p.x - hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x - hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+      g.fillStyle = '#574d41';                                  // face direita
+      g.beginPath();
+      g.moveTo(p.x + hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x + hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+    }
+
+    // 6. overlay de hover — verde se zoneável, vermelho se não
+    var hv = st.hover;
+    if (hv && dentro(hv.x, hv.y)) {
+      p = project(hv.x, hv.y);
+      g.strokeStyle = isZoneable(hv.x, hv.y) ? 'rgba(120,240,120,0.95)' : 'rgba(240,110,110,0.95)';
+      g.lineWidth = Math.max(1.5, 2 * z);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+  }
+
+  // Leitor puro: registra draw e NADA de update (a spec é explícita).
+  O.use('Render', { draw: draw });
+
+  O.Render = {
+    draw: draw,
+    project: project,
+    unproject: unproject,
+    isZoneable: isZoneable,
+    paintOrder: paintOrder,
+    visibleTiles: visibleTiles
+  };
+})(window);
+/* ===== OIKOS S3 RENDER — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S5 MODS — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Estado do motor — CLOSURE VOLÁTIL (D28). O schema v1 não tem campo de
+  // mods, então nada aqui é serializado. Fontes persistentes (instituições)
+  // re-registram após load(), via S8.
+  //
+  // DECISÃO: NÃO limpo a closure ao detectar troca de identidade de state
+  // (o gatilho que a S6 usa para reidratar ids). D28 atribui a re-registração
+  // à S8, e re-push por id é idempotente — quem recarrega um save re-empurra
+  // os mesmos ids e substitui no lugar. Limpar aqui duplicaria a
+  // responsabilidade e apagaria mods de fontes que ainda não re-registraram.
+  //
+  // porAlvo: target -> array de mods em ORDEM DE PUSH (a "idade de adoção").
+  // porId:   id -> mod, para o re-push substituir sem duplicar.
+  // ---------------------------------------------------------------------
+  var porAlvo = Object.create(null);
+  var porId = Object.create(null);
+
+  // EMENDA v1.10 D37: a closure ZERA quando o kernel reatribui o estado.
+  // A D28 manda fontes persistentes re-registrarem após load — cláusula que só
+  // faz sentido se o motor começa vazio, e a decisão anterior a tornava letra
+  // morta. Sem zerar, instituições de uma partida anterior sobrevivem no save
+  // carregado e alteram seus números em silêncio, sem que nada as remova.
+  // Mesmo gatilho de identidade que a S6 usa para reidratar ids.
+  var ultimoState = null;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    porAlvo = Object.create(null);
+    porId = Object.create(null);
+  }
+
+  var KINDS = { add: 1, mult: 1 };
+
+  function ehString(v) { return typeof v === 'string' && v.length > 0; }
+  function finito(v) { return typeof v === 'number' && isFinite(v); }
+
+  function listaDe(target) {
+    return porAlvo[target] || (porAlvo[target] = []);
+  }
+
+  function tirarDaLista(m) {
+    var l = porAlvo[m.target];
+    if (!l) return;
+    var i = l.indexOf(m);
+    if (i >= 0) l.splice(i, 1);
+  }
+
+  // ---------------------------------------------------------------------
+  // push — valida, insere ou SUBSTITUI NO LUGAR, emite 'mods:changed'.
+  // Nunca lança; entrada inválida = console.error + null, SEM emitir.
+  // ---------------------------------------------------------------------
+  function push(cfg) {
+    sincronizar();                                  // EMENDA v1.10 D37
+    if (!cfg || typeof cfg !== 'object') {
+      console.error('[OIKOS Mods] push inválido (não é objeto):', cfg);
+      return null;
+    }
+    if (!ehString(cfg.id) || !ehString(cfg.source) || !ehString(cfg.target)) {
+      console.error('[OIKOS Mods] push inválido (id/source/target têm de ser strings):', cfg);
+      return null;
+    }
+    if (!KINDS[cfg.kind]) {
+      console.error('[OIKOS Mods] push inválido (kind fora de {add, mult}):', cfg);
+      return null;
+    }
+    var temFn = typeof cfg.fn === 'function';
+    if (!temFn && !finito(cfg.value)) {
+      console.error('[OIKOS Mods] push inválido (value finito OU fn função):', cfg);
+      return null;
+    }
+
+    // DECISÃO: expiresAt não consta da lista de validações da carta. Aceito
+    // qualquer valor; não-finito vale como AUSENTE, ou seja, permanente.
+    var expira = finito(cfg.expiresAt) ? cfg.expiresAt : undefined;
+
+    var velho = porId[cfg.id];
+    if (velho) {
+      // Reforma NÃO reordena precedência: o mod é editado no lugar e mantém
+      // a posição que já ocupava na fila do alvo.
+      // DECISÃO: se o target mudou, não há posição a preservar na lista nova —
+      // sai da antiga e entra no fim da nova.
+      // EMENDA v1.10 D38: quem mantinha cache do alvo ANTIGO também precisa
+      // saber que ele mudou — sem isto, só o alvo novo era notificado.
+      var alvoAntigo = velho.target;
+      if (velho.target !== cfg.target) {
+        tirarDaLista(velho);
+        velho.target = cfg.target;
+        listaDe(cfg.target).push(velho);
+      }
+      velho.source = cfg.source;
+      velho.kind = cfg.kind;
+      velho.value = temFn ? undefined : Number(cfg.value);
+      velho.fn = temFn ? cfg.fn : undefined;
+      velho.expiresAt = expira;
+      O.bus.emit('mods:changed', { target: velho.target });
+      if (alvoAntigo !== velho.target) O.bus.emit('mods:changed', { target: alvoAntigo });
+      return velho;
+    }
+
+    var m = {
+      id: cfg.id, source: cfg.source, target: cfg.target, kind: cfg.kind,
+      value: temFn ? undefined : Number(cfg.value),
+      fn: temFn ? cfg.fn : undefined,
+      expiresAt: expira
+    };
+    porId[m.id] = m;
+    listaDe(m.target).push(m);
+    O.bus.emit('mods:changed', { target: m.target });
+    return m;
+  }
+
+  // ---------------------------------------------------------------------
+  // lazy-sweep — expira por ANO DE JOGO, lido vivo de OIKOS.state.year.
+  // Roda dentro do get, sobre a lista do alvo pedido apenas.
+  // ---------------------------------------------------------------------
+  function varrer(lista) {
+    var ano = O.state.year, i, m;
+    for (i = lista.length - 1; i >= 0; i--) {
+      m = lista[i];
+      if (m.expiresAt !== undefined && m.expiresAt <= ano) {
+        lista.splice(i, 1);
+        delete porId[m.id];
+      }
+    }
+  }
+
+  // valor de um mod no momento do get. fn é avaliada A CADA get — é o que
+  // torna as decisões sensíveis a contexto. Retorno não-finito: console.error
+  // e o mod é IGNORADO (não derruba o cálculo inteiro).
+  function valorDe(m, snapshot) {
+    if (!m.fn) return m.value;
+    var v;
+    try { v = m.fn(snapshot); }
+    catch (e) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" lancou:', e);
+      return null;
+    }
+    if (!finito(v)) {
+      console.error('[OIKOS Mods] fn de "' + m.id + '" devolveu não-finito:', v);
+      return null;
+    }
+    return v;
+  }
+
+  // ---------------------------------------------------------------------
+  // get(target, snapshot?) — nunca lança, nunca muta a base.
+  //
+  // LACUNA: a carta exige que "motor vazio devolve o valor base", mas a
+  // assinatura get(target, snapshot?) não traz parâmetro de base. Escolho a
+  // leitura mais simples que satisfaz o aceite sem inventar parâmetro: a base
+  // é snapshot[target] quando for número finito, e 0 quando não houver
+  // snapshot ou a chave. O mesmo snapshot vai para fn(snapshot), e o objeto
+  // NUNCA é escrito. Se o dono preferir base explícita, é troca de assinatura
+  // na carta, não aqui.
+  //
+  // Ordem (D28): TODOS os 'add' por idade de adoção, DEPOIS todos os 'mult'
+  // por idade. Duas passadas sobre a mesma lista em ordem de push — sem
+  // alocar arrays intermediários, o que mantém o get dentro do orçamento.
+  // ---------------------------------------------------------------------
+  function get(target, snapshot) {
+    try {
+      sincronizar();                                // EMENDA v1.10 D37
+      var base = (snapshot && finito(snapshot[target])) ? snapshot[target] : 0;
+      if (!ehString(target)) return base;
+      var lista = porAlvo[target];
+      if (!lista || !lista.length) return base;
+
+      varrer(lista);
+
+      var r = base, i, m, v;
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'add') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r += v;
+      }
+      for (i = 0; i < lista.length; i++) {
+        m = lista[i];
+        if (m.kind !== 'mult') continue;
+        v = valorDe(m, snapshot);
+        if (v !== null) r *= v;
+      }
+      return finito(r) ? r : base;
+    } catch (e) {
+      console.error('[OIKOS Mods] get("' + target + '") lancou:', e);
+      return 0;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // removeBySource — devolve a contagem removida.
+  // DECISÃO: emite um 'mods:changed' por ALVO distinto afetado, com o mesmo
+  // payload {target} do push. Manter uma única forma de payload vale mais
+  // para quem escuta (invalidar cache por alvo) do que um evento só com
+  // {source}, que obrigaria o ouvinte a tratar dois formatos.
+  // ---------------------------------------------------------------------
+  function removeBySource(sourceId) {
+    sincronizar();                                  // EMENDA v1.10 D37
+    if (!ehString(sourceId)) {
+      console.error('[OIKOS Mods] removeBySource inválido (source tem de ser string):', sourceId);
+      return 0;
+    }
+    var n = 0, alvos = [];
+    for (var target in porAlvo) {
+      var lista = porAlvo[target], mexeu = false;
+      for (var i = lista.length - 1; i >= 0; i--) {
+        if (lista[i].source !== sourceId) continue;
+        delete porId[lista[i].id];
+        lista.splice(i, 1);
+        n++; mexeu = true;
+      }
+      if (mexeu) alvos.push(target);
+    }
+    for (var k = 0; k < alvos.length; k++) O.bus.emit('mods:changed', { target: alvos[k] });
+    return n;
+  }
+
+  // Biblioteca pura: sem OIKOS.use(), sem hook de ciclo de vida, sem escrita
+  // em state, zero DOM.
+  O.Mods = { push: push, get: get, removeBySource: removeBySource };
+})(window);
+/* ===== OIKOS S5 MODS — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S7 SIM — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // Terrenos (seção 5.3): 0 oceano, 1 água doce, 2 areia, 3 grama,
+  // 4 fértil, 5 floresta, 6 pedra, 7 montanha.
+  var OCEANO = 0, DOCE = 1, FERTIL = 4, FLORESTA = 5, PEDRA = 6, MONTANHA = 7;
+
+  var COMIDA_POR_PESSOA = 1;
+  var CRESCIMENTO_R = 0.08;     // r do logístico; baixo o bastante para não oscilar
+  var LIMIAR_ERA = 100;         // conhecimento que abre a era seguinte
+  var FOME_FRACAO = 0.10;       // parcela da população perdida por ano de fome
+  var POLUICAO_DECAIMENTO = 0.98;
+
+  // LACUNA: a carta NÃO fixa a superfície de export do S7 — ao contrário de S3
+  // e S5, a spec descreve só comportamento. Exporto o mínimo que o harness
+  // precisa para provar o aceite e que a S12 precisará para montar a barra de
+  // ferramentas: o catálogo, a validação, a colocação e o passo do ano.
+  // step() é público porque update() fica privado dentro do kernel, e sem ele
+  // não há como rodar N anos de forma determinística sem depender do rAF.
+
+  // DECISÃO: a coleta produz comida E madeira — a Era 1 não tem lenhador na
+  // lista da carta (acampamento, cabana de coletor, pesca, lascamento, trilha),
+  // e sem madeira nenhuma das outras construções sai do papel.
+  // DECISÃO: a trilha rende conhecimento. É a única das cinco sem produção
+  // óbvia, e "caminho" como troca de saber é a leitura mais simples.
+  var BUILDINGS = [
+    { id: 1, nome: 'acampamento',   custo: {},             casas: 8, vagas: 0, comida: 0, madeira: 0, pedra: 0, saber: 0.5, onde: 'terra' },
+    { id: 2, nome: 'cabanaColetor', custo: { wood: 5 },    casas: 0, vagas: 3, comida: 4, madeira: 2, pedra: 0, saber: 0.2, onde: 'verde' },
+    { id: 3, nome: 'pesca',         custo: { wood: 8 },    casas: 0, vagas: 3, comida: 5, madeira: 0, pedra: 0, saber: 0.2, onde: 'agua' },
+    { id: 4, nome: 'lascamento',    custo: { wood: 6 },    casas: 0, vagas: 2, comida: 0, madeira: 0, pedra: 3, saber: 0.4, onde: 'pedra' },
+    { id: 5, nome: 'trilha',        custo: { stone: 2 },   casas: 0, vagas: 0, comida: 0, madeira: 0, pedra: 0, saber: 0.3, onde: 'terra' }
+  ];
+  var PORID = {};
+  for (var bi = 0; bi < BUILDINGS.length; bi++) PORID[BUILDINGS[bi].id] = BUILDINGS[bi];
+
+  // Estado volátil do módulo, por IDENTIDADE do objeto de estado — reset() e
+  // load() reatribuem state, e sinalizadores de aresta não podem vazar entre
+  // partidas. Mesmo gatilho de D23 (S6), D36 (S3) e D37 (S5).
+  // EMENDA v1.12 D41: eraAnunciada guarda a ERA já anunciada (-1 = nenhuma),
+  // não um booleano de sessão.
+  var ultimoState = null, eraAnunciada = -1, emFome = false;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    eraAnunciada = -1;                              // EMENDA v1.12 D41
+    emFome = false;
+  }
+
+  function dentro(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  function vizinhoTem(x, y, raio, teste) {
+    var M = O.consts.MAP, T = O.state.tiles.terrain;
+    for (var dy = -raio; dy <= raio; dy++) for (var dx = -raio; dx <= raio; dx++) {
+      var nx = x + dx, ny = y + dy;
+      if (!dentro(nx, ny)) continue;
+      if (teste(T[ny * M + nx])) return true;
+    }
+    return false;
+  }
+
+  // Condições de posicionamento dimensionadas sobre o mapa real do S2.
+  function condicaoOk(onde, x, y) {
+    switch (onde) {
+      case 'terra': return true;
+      case 'agua':  return vizinhoTem(x, y, 1, function (t) { return t === OCEANO || t === DOCE; });
+      case 'pedra': return vizinhoTem(x, y, 2, function (t) { return t === PEDRA || t === MONTANHA; });
+      case 'verde': return vizinhoTem(x, y, 2, function (t) { return t === FLORESTA || t === FERTIL; });
+    }
+    return false;
+  }
+
+  // canBuild(idOuNome, x, y) -> { ok, motivo }. Nunca lança.
+  // O S7 valida o terreno por conta própria: a seção 4.2 não lista Render entre
+  // o que um módulo pode consumir, então reusar isZoneable seria dependência
+  // fora do contrato.
+  function canBuild(ref, x, y) {
+    sincronizar();
+    var b = typeof ref === 'string' ? null : PORID[ref];
+    if (!b) for (var i = 0; i < BUILDINGS.length; i++) if (BUILDINGS[i].nome === ref) b = BUILDINGS[i];
+    if (!b) return { ok: false, motivo: 'edificio desconhecido' };
+    if (!dentro(x, y) || Math.floor(x) !== x || Math.floor(y) !== y) return { ok: false, motivo: 'fora do mapa' };
+    var M = O.consts.MAP, i2 = y * M + x, st = O.state;
+    if (st.tiles.terrain[i2] < 2) return { ok: false, motivo: 'agua' };
+    if (st.tiles.building[i2] !== 0) return { ok: false, motivo: 'ocupado' };
+    if (!condicaoOk(b.onde, x, y)) return { ok: false, motivo: 'condicao ' + b.onde };
+    for (var k in b.custo) if (Object.prototype.hasOwnProperty.call(b.custo, k)) {
+      if ((st.res[k] || 0) < b.custo[k]) return { ok: false, motivo: 'falta ' + k };
+    }
+    return { ok: true, motivo: '', b: b };
+  }
+
+  function place(ref, x, y) {
+    var v = canBuild(ref, x, y);
+    if (!v.ok) return null;
+    var M = O.consts.MAP, i2 = y * M + x, st = O.state;
+    for (var k in v.b.custo) if (Object.prototype.hasOwnProperty.call(v.b.custo, k)) st.res[k] -= v.b.custo[k];
+    st.tiles.building[i2] = v.b.id;
+    st.tiles.level[i2] = 1;
+    // EMENDA v1.12 D42: payload uniforme { i, x, y, ... } nos dois pontos.
+    O.bus.emit('tile:changed', { i: i2, x: x, y: y, building: v.b.id });
+    return v.b;
+  }
+
+  // Fluxo do ano. A base de CADA número vem no snapshot e passa por Mods.get
+  // (D34): nenhum valor é usado sem atravessar o motor.
+  function step() {
+    sincronizar();
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, B = st.tiles.building, L = st.tiles.level, P = st.tiles.pollution;
+    var i, x, y, b;
+
+    // --- bruto dos edifícios --------------------------------------------
+    var comidaBruta = 0, madeiraBruta = 0, pedraBruta = 0;
+    var casasBrutas = 0, vagasBrutas = 0, saberBruto = 0, ativos = 0;
+    for (i = 0; i < N; i++) {
+      if (!B[i]) continue;
+      b = PORID[B[i]];
+      if (!b) continue;
+      var nivel = L[i] || 1;
+      ativos++;
+      comidaBruta += b.comida * nivel;
+      madeiraBruta += b.madeira * nivel;
+      pedraBruta += b.pedra * nivel;
+      casasBrutas += b.casas * nivel;
+      vagasBrutas += b.vagas * nivel;
+      saberBruto += b.saber * nivel;
+    }
+
+    var pop = st.sim.pop;
+    var snap = {
+      pop: pop, ano: st.year, era: st.era, edificios: ativos,
+      foodProd: comidaBruta, woodProd: madeiraBruta, stoneProd: pedraBruta,
+      foodUse: pop * COMIDA_POR_PESSOA,
+      housing: casasBrutas, jobs: vagasBrutas,
+      knowledge: saberBruto, tension: 0, growth: 0
+    };
+
+    // --- 1. consumo, 2. produção, 3. excedente --------------------------
+    var consumo = O.Mods.get('foodUse', snap);
+    var comida = O.Mods.get('foodProd', snap);
+    var madeira = O.Mods.get('woodProd', snap);
+    var pedra = O.Mods.get('stoneProd', snap);
+    var excedente = comida - consumo;
+
+    st.res.food = Math.max(0, st.res.food + excedente);
+    st.res.wood += madeira;
+    st.res.stone += pedra;
+    st.sim.foodProd = comida;
+
+    // --- 4. moradia e crescimento logístico -----------------------------
+    var moradia = O.Mods.get('housing', snap);
+    st.sim.housing = moradia;
+    snap.housing = moradia;
+
+    var faminto = (excedente < 0 && st.res.food <= 0);
+    if (!faminto && moradia > 0 && pop > 0) {
+      snap.growth = CRESCIMENTO_R * pop * (1 - pop / moradia);
+      pop = pop + O.Mods.get('growth', snap);
+    } else if (!faminto && moradia > 0 && pop <= 0) {
+      snap.growth = 1;                      // semente: um acampamento atrai gente
+      pop = O.Mods.get('growth', snap);
+    }
+
+    // --- 5. empregos -----------------------------------------------------
+    st.sim.jobs = O.Mods.get('jobs', snap);
+
+    // --- 6. fome ---------------------------------------------------------
+    if (faminto) {
+      var perdidos = Math.max(1, Math.floor(pop * FOME_FRACAO));
+      pop = Math.max(0, pop - perdidos);
+      // DECISÃO: a crônica é por ARESTA — registra quando a fome começa, não a
+      // cada ano faminto. Cem entradas iguais afogariam o epílogo (S11), que
+      // agrupa por era e lê efeitoMedido.
+      if (!emFome) {
+        emFome = true;
+        O.Chron.log({
+          type: 'desastre',
+          titulo: 'A fome chega à Casa',
+          prosa: 'O celeiro se esvazia e a Casa cobra o preço do que não foi plantado.',
+          efeitoMedido: { pop: -perdidos, excedente: Math.round(excedente * 100) / 100 }
+        });
+      }
+    } else if (emFome && excedente >= 0) {
+      emFome = false;
+    }
+
+    st.sim.pop = Math.max(0, pop);
+    snap.pop = st.sim.pop;
+
+    // --- 7. tensão -------------------------------------------------------
+    snap.tension = (moradia > 0 ? Math.max(0, st.sim.pop - moradia) / moradia : 0) + (faminto ? 0.5 : 0);
+    st.sim.tension = O.Mods.get('tension', snap);
+
+    // --- 8. conhecimento e era ------------------------------------------
+    st.meters.knowledge += O.Mods.get('knowledge', snap);
+    // EMENDA v1.12 D41: chaveado pela ERA VIGENTE. O booleano só era limpo na
+    // troca de identidade do estado, então o portão abria uma vez por sessão e
+    // o jogo emperraria na Era 2 — seis eras são a espinha dorsal do design.
+    if (eraAnunciada !== st.era && st.meters.knowledge >= LIMIAR_ERA) {
+      eraAnunciada = st.era;
+      O.bus.emit('era:ready', { era: st.era, knowledge: st.meters.knowledge });
+    }
+
+    degradar(comidaBruta, madeiraBruta, ativos);
+  }
+
+  // Degradação. O sorteio vem de rng.child('sim.' + ano): child() deriva da
+  // seed de CONSTRUÇÃO e não consome o pai, então o mesmo ano dá sempre o mesmo
+  // resultado — inclusive depois de um load(), quando o stream principal é
+  // recriado. Determinismo estrutural sem guardar estado de rng.
+  function degradar(comidaBruta, madeiraBruta, ativos) {
+    var st = O.state, M = O.consts.MAP, N = M * M;
+    var T = st.tiles.terrain, B = st.tiles.building, P = st.tiles.pollution;
+    var r = O.rng.child('sim.' + st.year);
+    var i, x, y;
+
+    // poluição: cada edifício suja o próprio tile e o raio 1; tudo decai devagar
+    for (i = 0; i < N; i++) P[i] *= POLUICAO_DECAIMENTO;
+    for (i = 0; i < N; i++) {
+      if (!B[i]) continue;
+      x = i % M; y = (i - x) / M;
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        var nx = x + dx, ny = y + dy;
+        if (!dentro(nx, ny)) continue;
+        var ni = ny * M + nx;
+        P[ni] = Math.min(1, P[ni] + (dx === 0 && dy === 0 ? 0.04 : 0.015));
+      }
+    }
+
+    // colheita excessiva consome floresta, e o solo perde fertilidade sob uso
+    var pressao = (comidaBruta + madeiraBruta) / 40;
+    if (pressao <= 0) return;
+    var tentativas = Math.min(6, Math.floor(pressao) + (r.f() < (pressao % 1) ? 1 : 0));
+    for (var t = 0; t < tentativas; t++) {
+      var alvo = r.i(N);
+      // EMENDA v1.12 D42: payload uniforme { i, x, y, ... }.
+      // EMENDA v1.12 D43: geo.forestTiles e geo.fertileTiles seguem VIVOS — a S8
+      // dimensiona a carta de decisão por state.geo, e congelado no worldgen ele
+      // faria a Era 4 decidir sobre a floresta que existia na Era 1.
+      var ax = alvo % M, ay = (alvo - ax) / M, g = st.geo;
+      if (T[alvo] === FLORESTA) {
+        T[alvo] = 3;
+        if (g && typeof g.forestTiles === 'number') g.forestTiles--;
+        O.bus.emit('tile:changed', { i: alvo, x: ax, y: ay, terrain: 3 });
+      } else if (T[alvo] === FERTIL && r.f() < 0.35) {
+        T[alvo] = 3;
+        if (g && typeof g.fertileTiles === 'number') g.fertileTiles--;
+        O.bus.emit('tile:changed', { i: alvo, x: ax, y: ay, terrain: 3 });
+      }
+    }
+  }
+
+  O.use('Sim', { update: step });
+
+  O.Sim = { BUILDINGS: BUILDINGS, canBuild: canBuild, place: place, step: step };
+})(window);
+/* ===== OIKOS S7 SIM — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S8 ERAS — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // LACUNA: a carta não fixa a superfície de export do S8 (mesma situação do
+  // S7). Exporto o catálogo, a consulta de opções da era, adoção, reforma e o
+  // custo ao vivo — o mínimo que a S12 precisa para o painel Constituição e
+  // que o harness precisa para adotar e reformar sem UI.
+
+  var ERAS = [
+    { id: 0, nome: 'Pedra Lascada',   prosa: 'A Casa aprende o gume da pedra.' },
+    { id: 1, nome: 'Semeadura',       prosa: 'A Casa confia à terra o que comerá depois.' },
+    { id: 2, nome: 'Primeiro Metal',  prosa: 'A Casa descobre que a rocha escorre.' },
+    { id: 3, nome: 'Engrenagens',     prosa: 'A Casa multiplica os próprios braços.' },
+    { id: 4, nome: 'Vapor',           prosa: 'A Casa queima o que guardou por eras.' },
+    { id: 5, nome: 'Contemporânea',   prosa: 'A Casa se olha e decide o que será.' }
+  ];
+
+  // DECISÃO: o limiar do S7 é fixo em 100 e o evento era:ready é chaveado pela
+  // era vigente (D41). Para a era seguinte não abrir no mesmo instante, a
+  // adoção CONSOME 100 de conhecimento. É a solução mais simples que faz o
+  // limiar fixo do S7 valer era após era, sem tocar em módulo alheio.
+  var CUSTO_CONHECIMENTO = 100;
+
+  // Instituições: pares por era, conforme a tabela da seção 6.
+  // mods[] empurra contra os NOVE alvos da D39, e só contra eles.
+  var INSTITUTIONS = [
+    { id: 'inst.terraComum', era: 0, titulo: 'Terra comum',
+      prosa: 'O chão não tem dono: quem planta, colhe, e a Casa se espalha sozinha.',
+      pros: 'fronteira orgânica grátis', cons: 'zoneamento fora de controle',
+      custoReformaBase: 60, gates: [],
+      mods: [{ target: 'growth', kind: 'mult', value: 1.10 },
+             { target: 'tension', kind: 'add', value: -0.10 }] },
+    { id: 'inst.chefiaAloca', era: 0, titulo: 'Chefia aloca',
+      prosa: 'Uma voz decide onde cada um levanta sua casa.',
+      pros: 'trabalho dirigido, mais braços por obra', cons: 'a obediência cobra seu preço',
+      custoReformaBase: 90, gates: ['inst.trabalhoPactuado', 'inst.guildas'],
+      mods: [{ target: 'jobs', kind: 'mult', value: 1.25 },
+             { target: 'tension', kind: 'add', value: 0.15 }] },
+
+    { id: 'inst.celeiroColetivo', era: 1, titulo: 'Celeiro coletivo',
+      prosa: 'O que sobra de um é o que salva o outro no inverno.',
+      pros: 'resistência à fome', cons: 'sem comércio interno',
+      custoReformaBase: 80, gates: ['inst.mercadoLivre'],
+      // fn(snapshot): quanto maior a população, mais o celeiro rende — a
+      // vantagem se dimensiona sobre o mundo real (D34).
+      mods: [{ target: 'foodUse', kind: 'mult',
+               fn: function (s) { var p = (s && s.pop) || 0; return p > 0 ? Math.max(0.75, 0.95 - p / 400) : 0.95; } }] },
+    { id: 'inst.excedentePrivado', era: 1, titulo: 'Excedente privado',
+      prosa: 'Cada casa guarda o seu, e o seu vira troca.',
+      pros: 'extração e estoque crescem', cons: 'a fome bate em quem não guardou',
+      custoReformaBase: 80, gates: ['inst.celeiroColetivo'],
+      mods: [{ target: 'woodProd', kind: 'mult', value: 1.20 },
+             { target: 'stoneProd', kind: 'mult', value: 1.20 },
+             { target: 'tension', kind: 'add', value: 0.10 }] },
+
+    { id: 'inst.corveia', era: 2, titulo: 'Corveia',
+      prosa: 'A obra é dever, e o dever não se recusa.',
+      pros: 'construção dobrada e sem custo', cons: 'tensão contínua',
+      custoReformaBase: 140, gates: ['inst.jornadaRegulada'],
+      mods: [{ target: 'jobs', kind: 'mult', value: 2.0 },
+             { target: 'tension', kind: 'add', value: 0.20 }] },
+    { id: 'inst.trabalhoPactuado', era: 2, titulo: 'Trabalho pactuado',
+      prosa: 'O que se faz junto, combina-se antes.',
+      pros: 'a Casa cresce em paz', cons: 'nada sai depressa',
+      custoReformaBase: 110, gates: [],
+      mods: [{ target: 'tension', kind: 'add', value: -0.15 },
+             { target: 'growth', kind: 'mult', value: 1.08 }] },
+
+    { id: 'inst.guildas', era: 3, titulo: 'Guildas',
+      prosa: 'O ofício se guarda, se ensina e se protege.',
+      pros: 'qualidade e estabilidade', cons: 'crescimento lento',
+      custoReformaBase: 160, gates: ['inst.mercadoLivre'],
+      mods: [{ target: 'knowledge', kind: 'mult', value: 1.30 },
+             { target: 'growth', kind: 'mult', value: 0.90 }] },
+    { id: 'inst.mercadoLivre', era: 3, titulo: 'Mercado livre',
+      prosa: 'Quem quiser, oferece; quem puder, paga.',
+      pros: 'a Casa incha depressa', cons: 'e range nas juntas',
+      custoReformaBase: 160, gates: ['inst.guildas'],
+      mods: [{ target: 'growth', kind: 'mult', value: 1.20 },
+             { target: 'tension', kind: 'add', value: 0.15 }] },
+
+    { id: 'inst.jornadaLonga', era: 4, titulo: 'Jornada longa',
+      prosa: 'Enquanto houver luz, e depois dela também.',
+      pros: 'produção em alta', cons: 'a saúde cai, as revoltas sobem',
+      custoReformaBase: 200, gates: [],
+      mods: [{ target: 'foodProd', kind: 'mult', value: 1.30 },
+             { target: 'stoneProd', kind: 'mult', value: 1.30 },
+             { target: 'tension', kind: 'add', value: 0.30 }] },
+    { id: 'inst.jornadaRegulada', era: 4, titulo: 'Jornada regulada',
+      prosa: 'O corpo também é Casa, e pede seu descanso.',
+      pros: 'a Casa respira', cons: 'e produz menos',
+      custoReformaBase: 180, gates: [],
+      mods: [{ target: 'tension', kind: 'add', value: -0.20 },
+             { target: 'foodProd', kind: 'mult', value: 0.90 }] },
+
+    { id: 'inst.constituicaoEcologica', era: 5, titulo: 'Constituição ecológica',
+      prosa: 'A Casa escreve que a Casa não se vende.',
+      pros: 'a Casa regenera', cons: 'a fartura fica para depois',
+      custoReformaBase: 240, gates: ['inst.cartaExtracao'],
+      mods: [{ target: 'foodProd', kind: 'mult', value: 0.90 },
+             { target: 'tension', kind: 'add', value: -0.20 }] },
+    { id: 'inst.cartaExtracao', era: 5, titulo: 'Carta da extração',
+      prosa: 'Tudo que a Casa guarda, a Casa pode gastar.',
+      pros: 'produção livre', cons: 'colapso possível',
+      custoReformaBase: 240, gates: ['inst.constituicaoEcologica'],
+      mods: [{ target: 'woodProd', kind: 'mult', value: 1.50 },
+             { target: 'stoneProd', kind: 'mult', value: 1.50 },
+             { target: 'tension', kind: 'add', value: 0.25 }] }
+  ];
+
+  var PORID = {};
+  for (var k = 0; k < INSTITUTIONS.length; k++) PORID[INSTITUTIONS[k].id] = INSTITUTIONS[k];
+
+  // Identidade do estado: reset() e load() reatribuem o objeto. É aqui que o
+  // S8 cumpre a D28 — depois de um load(), as instituições vivem em
+  // state.institutions mas os mods NÃO existem mais no motor (D37 zerou a
+  // closure do Mods). Re-registrar é obrigação nossa, e re-push por id
+  // substitui no lugar (D28), então é idempotente.
+  var ultimoState = null;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    reRegistrar();
+  }
+
+  function reRegistrar() {
+    var vig = O.state.institutions || [];
+    for (var i = 0; i < vig.length; i++) {
+      var inst = PORID[vig[i] && vig[i].id];
+      if (inst) empurrarMods(inst);
+    }
+    return vig.length;
+  }
+
+  function empurrarMods(inst) {
+    for (var i = 0; i < inst.mods.length; i++) {
+      var m = inst.mods[i];
+      O.Mods.push({
+        id: inst.id + '#' + i, source: inst.id, target: m.target,
+        kind: m.kind, value: m.value, fn: m.fn
+      });
+    }
+  }
+
+  function vigentes() {
+    sincronizar();
+    return (O.state.institutions || []).slice();
+  }
+  function jaAdotada(id) {
+    var v = O.state.institutions || [];
+    for (var i = 0; i < v.length; i++) if (v[i] && v[i].id === id) return true;
+    return false;
+  }
+  // Gate: instituição adotada bloqueia as que ela lista em gates[].
+  function bloqueada(id) {
+    var v = O.state.institutions || [];
+    for (var i = 0; i < v.length; i++) {
+      var inst = PORID[v[i] && v[i].id];
+      if (inst && inst.gates.indexOf(id) >= 0) return inst.id;
+    }
+    return null;
+  }
+
+  // opcoes(era?) — o que ainda pode ser adotado naquela era.
+  function opcoes(era) {
+    sincronizar();
+    var e = (era === undefined) ? O.state.era : era;
+    var out = [];
+    for (var i = 0; i < INSTITUTIONS.length; i++) {
+      var inst = INSTITUTIONS[i];
+      if (inst.era !== e) continue;
+      if (jaAdotada(inst.id) || bloqueada(inst.id)) continue;
+      out.push(inst);
+    }
+    return out;
+  }
+
+  // Custo de reforma (seção 7): base × (1+idade/fator) × (1−legit/100) × K(k)/K(0)
+  var FATOR_IDADE = 20;
+  function custoReforma(id) {
+    sincronizar();
+    var inst = PORID[id];
+    if (!inst) return Infinity;
+    var v = O.state.institutions || [], adotadaEm = null;
+    for (var i = 0; i < v.length; i++) if (v[i] && v[i].id === id) adotadaEm = v[i].yearAdopted;
+    if (adotadaEm === null) return Infinity;
+    var idade = Math.max(0, O.state.year - adotadaEm);
+    var legit = Math.max(0, Math.min(100, O.state.meters.legitimacy));
+    var k = O.state.pendulums.main ? O.state.pendulums.main.k : 0;
+    var rigidez = O.Elliptic.K(k) / O.Elliptic.K(0);      // teto ~3,59 (D19)
+    return inst.custoReformaBase * (1 + idade / FATOR_IDADE) * (1 - legit / 100) * rigidez;
+  }
+
+  // A carta de decisão é MATERIAL: dimensionada por state.geo, que a D43
+  // mantém vivo. A Era 4 tem de decidir sobre a floresta que existe agora.
+  function contexto() {
+    var g = O.state.geo || {}, st = O.state;
+    return {
+      forestTiles: g.forestTiles || 0, fertileTiles: g.fertileTiles || 0,
+      landTiles: g.landTiles || 0, hasRiver: !!g.hasRiver,
+      riverLength: g.riverLength || 0, oreVeins: g.oreVeins || 0,
+      pop: st.sim.pop, ano: st.year, era: st.era
+    };
+  }
+
+  function abrirDecisao() {
+    var ops = opcoes(O.state.era);
+    O.loop.pause();                       // 5.7: só o loop muta state.paused
+    O.bus.emit('decision:open', { era: O.state.era, opcoes: ops, contexto: contexto() });
+    return ops;
+  }
+
+  // adopt(id) — adota, empurra os mods, registra o ATO e avança a era.
+  function adopt(id) {
+    sincronizar();
+    var inst = PORID[id];
+    if (!inst) { console.error('[OIKOS Eras] instituição desconhecida:', id); return null; }
+    if (inst.era !== O.state.era) { console.error('[OIKOS Eras] fora da era vigente:', id); return null; }
+    if (jaAdotada(id)) { console.error('[OIKOS Eras] já adotada:', id); return null; }
+    var porQuem = bloqueada(id);
+    if (porQuem) { console.error('[OIKOS Eras] bloqueada por ' + porQuem + ':', id); return null; }
+
+    O.state.institutions.push({ id: inst.id, yearAdopted: O.state.year });
+    empurrarMods(inst);
+
+    // D23: o ATO é a entrada que as consequências futuras vão citar (D22).
+    var ato = O.Chron.log({
+      type: 'ato', titulo: inst.titulo, prosa: inst.prosa,
+      efeitoMedido: { era: O.state.era, pros: inst.pros, cons: inst.cons }
+    });
+    O.bus.emit('inst:adopted', { id: inst.id, era: O.state.era, ato: ato && ato.id });
+
+    // DECISÃO: a adoção CONSOME conhecimento (ver CUSTO_CONHECIMENTO). Sem
+    // isso o era:ready da era seguinte dispararia no mesmo instante, porque o
+    // limiar do S7 é fixo e o conhecimento já está acima dele.
+    O.state.meters.knowledge = Math.max(0, O.state.meters.knowledge - CUSTO_CONHECIMENTO);
+
+    var de = O.state.era;
+    if (de < ERAS.length - 1) O.state.era = de + 1;
+    O.bus.emit('decision:closed', { era: de, adotada: inst.id });
+    O.bus.emit('era:advanced', { de: de, para: O.state.era });
+    return inst;
+  }
+
+  // reform(idVelho, idNovo) — paga legitimidade pelo custo e troca.
+  function reform(idVelho, idNovo) {
+    sincronizar();
+    var velho = PORID[idVelho], novo = PORID[idNovo];
+    if (!velho || !novo) { console.error('[OIKOS Eras] reforma com id desconhecido'); return null; }
+    if (!jaAdotada(idVelho)) { console.error('[OIKOS Eras] não vigente:', idVelho); return null; }
+    if (jaAdotada(idNovo)) { console.error('[OIKOS Eras] já vigente:', idNovo); return null; }
+    var custo = custoReforma(idVelho);
+    if (!isFinite(custo)) return null;
+    if (O.state.meters.legitimacy < custo / 10) {
+      console.error('[OIKOS Eras] legitimidade insuficiente para reformar', idVelho);
+      return null;
+    }
+
+    O.Mods.removeBySource(idVelho);
+    var v = O.state.institutions;
+    for (var i = v.length - 1; i >= 0; i--) if (v[i] && v[i].id === idVelho) v.splice(i, 1);
+
+    v.push({ id: novo.id, yearAdopted: O.state.year });
+    empurrarMods(novo);
+    O.state.meters.legitimacy = Math.max(0, O.state.meters.legitimacy - custo / 10);
+
+    O.Chron.log({
+      type: 'ato', titulo: 'Reforma: ' + velho.titulo + ' dá lugar a ' + novo.titulo,
+      prosa: 'A Casa desfaz o que jurou, e o preço da palavra rompida é a confiança.',
+      efeitoMedido: { custo: Math.round(custo * 100) / 100, idade: O.state.year }
+    });
+    O.bus.emit('inst:reformed', { de: idVelho, para: idNovo, custo: custo });
+    return novo;
+  }
+
+  // A transição nasce do era:ready do S7. Escuta pelo bus, nunca por update().
+  O.bus.on('era:ready', function () {
+    sincronizar();
+    abrirDecisao();
+  });
+
+  // Ciclo de vida leve. O update roda sincronizar() a cada tick — e isso NÃO é
+  // luxo: depois de um load() a closure do Mods está zerada (D37) e ninguém
+  // mais chamaria o S8 para re-registrar, porque Mods.get não nos aciona. Com
+  // o update, o primeiro tick após o load repõe os modificadores. O custo é
+  // uma comparação de referência por ano.
+  O.use('Eras', { init: sincronizar, update: sincronizar });
+
+  O.Eras = {
+    ERAS: ERAS, INSTITUTIONS: INSTITUTIONS,
+    opcoes: opcoes, adopt: adopt, reform: reform,
+    custoReforma: custoReforma, vigentes: vigentes
+  };
+})(window);
+/* ===== OIKOS S8 ERAS — FIM ===== */
+</script>
+<script>
+/* ================== HARNESS S8 — critérios de aceite ================== */
+(function () {
+  'use strict';
+  var O = window.OIKOS, E = O.Eras, res = [];
+  function t(id, nome, ok, det) { res.push({ id: id, nome: nome, ok: !!ok, det: det || '', skip: false }); }
+  function comErros(fn) {
+    var n = 0, orig = console.error;
+    console.error = function () { n++; };
+    try { fn(); } finally { console.error = orig; }
+    return n;
+  }
+  function partida(seed) {
+    O.reset(seed);
+    O.Worldgen.generate();
+    O.state.sim.pop = 20;
+    O.state.meters.legitimacy = 50;
+    return O.state;
+  }
+
+  // ---- 1. catálogo: 6 eras, 12 instituições, pares por era --------------
+  (function () {
+    var porEra = {};
+    E.INSTITUTIONS.forEach(function (i) { porEra[i.era] = (porEra[i.era] || 0) + 1; });
+    var pares = Object.keys(porEra).every(function (e) { return porEra[e] === 2; });
+    var campos = E.INSTITUTIONS.every(function (i) {
+      return i.id && typeof i.titulo === 'string' && typeof i.prosa === 'string' &&
+        typeof i.pros === 'string' && typeof i.cons === 'string' &&
+        Array.isArray(i.mods) && Array.isArray(i.gates) && isFinite(i.custoReformaBase);
+    });
+    var ALVOS = ['foodProd', 'foodUse', 'woodProd', 'stoneProd', 'housing', 'jobs', 'growth', 'tension', 'knowledge'];
+    var soAlvosD39 = E.INSTITUTIONS.every(function (i) {
+      return i.mods.every(function (m) { return ALVOS.indexOf(m.target) >= 0; });
+    });
+    t(1, 'Catálogo: 6 eras, 12 instituições em pares por era, schema completo, e mods só contra os nove alvos da D39',
+      E.ERAS.length === 6 && E.INSTITUTIONS.length === 12 && pares && campos && soAlvosD39,
+      'eras=' + E.ERAS.length + ' instituições=' + E.INSTITUTIONS.length + ' pares por era=' + pares +
+      ' · alvos fora da D39=' + (!soAlvosD39));
+  })();
+
+  // ---- 2. opcoes() lista o par da era vigente ---------------------------
+  (function () {
+    partida(42);
+    var ops = E.opcoes();
+    var daEra = ops.every(function (i) { return i.era === 0; });
+    t(2, 'opcoes() lista o par institucional da era vigente', ops.length === 2 && daEra,
+      '[' + ops.map(function (i) { return i.id; }).join(', ') + ']');
+  })();
+
+  // ---- 3. adopt: mods, ato (D23), eventos e avanço de era ---------------
+  (function () {
+    partida(42);
+    var eventos = [];
+    var offA = O.bus.on('inst:adopted', function (p) { eventos.push('adopted:' + p.id); });
+    var offB = O.bus.on('era:advanced', function (p) { eventos.push('advanced:' + p.de + '->' + p.para); });
+    var offC = O.bus.on('decision:closed', function () { eventos.push('closed'); });
+    var antes = O.Mods.get('growth', { growth: 1 });
+    var inst = E.adopt('inst.terraComum');
+    var depois = O.Mods.get('growth', { growth: 1 });
+    offA(); offB(); offC();
+    var ato = O.state.chronicle.filter(function (e) { return e.type === 'ato'; });
+    var schemaOk = ato.length === 1 && ato[0].titulo && ato[0].prosa && ato[0].id &&
+      ato[0].text === undefined && ato[0].source === undefined;
+    t(3, "adopt(): empurra mods, registra ato no schema D23, avança a era e emite inst:adopted/era:advanced/decision:closed",
+      inst && depois > antes && O.state.era === 1 && O.state.institutions.length === 1 &&
+      schemaOk && eventos.length === 3,
+      'growth ' + antes.toFixed(3) + '->' + depois.toFixed(3) + ' · era=' + O.state.era +
+      ' · eventos=[' + eventos.join(', ') + '] · ato sem text/source=' + schemaOk);
+  })();
+
+  // ---- 4. GATE testável: adotar A faz B sumir das eras seguintes --------
+  (function () {
+    partida(42);
+    var antesE2 = E.opcoes(2).map(function (i) { return i.id; });
+    var antesE3 = E.opcoes(3).map(function (i) { return i.id; });
+    E.adopt('inst.chefiaAloca');                   // gates: trabalhoPactuado, guildas
+    var depoisE2 = E.opcoes(2).map(function (i) { return i.id; });
+    var depoisE3 = E.opcoes(3).map(function (i) { return i.id; });
+    var sumiu = antesE2.indexOf('inst.trabalhoPactuado') >= 0 && depoisE2.indexOf('inst.trabalhoPactuado') < 0 &&
+                antesE3.indexOf('inst.guildas') >= 0 && depoisE3.indexOf('inst.guildas') < 0;
+    var sobrou = depoisE2.indexOf('inst.corveia') >= 0 && depoisE3.indexOf('inst.mercadoLivre') >= 0;
+    t(4, 'Gate: adotar Chefia aloca remove Trabalho pactuado e Guildas das eras seguintes, e não remove o resto',
+      sumiu && sobrou,
+      'era2 ' + antesE2.length + '->' + depoisE2.length + ' [' + depoisE2.join(',') + '] · era3 ' +
+      antesE3.length + '->' + depoisE3.length + ' [' + depoisE3.join(',') + ']');
+  })();
+
+  // ---- 5. adopt rejeita sem lançar --------------------------------------
+  (function () {
+    partida(42);
+    var rets = [], lancou = false;
+    var erros = comErros(function () {
+      try {
+        rets.push(E.adopt('inst.inexistente'));
+        rets.push(E.adopt('inst.corveia'));            // era 2, estamos na 0
+        E.adopt('inst.chefiaAloca');                   // válida, avança para era 1
+        rets.push(E.adopt('inst.chefiaAloca'));        // já adotada
+        O.state.era = 2;
+        rets.push(E.adopt('inst.trabalhoPactuado'));   // bloqueada pelo gate
+      } catch (e) { lancou = true; }
+    });
+    var todosNull = rets.length === 4 && rets.every(function (r) { return r === null; });
+    t(5, 'adopt() recusa id desconhecido, fora da era, já adotada e bloqueada por gate — com console.error, sem lançar',
+      todosNull && !lancou && erros === 4,
+      'nulls=' + todosNull + ' lançou=' + lancou + ' console.error=' + erros + '/4');
+  })();
+
+  // ---- 6. custo de reforma cresce com a IDADE ---------------------------
+  (function () {
+    partida(42);
+    E.adopt('inst.terraComum');
+    O.state.pendulums.main.k = 0.1;
+    O.state.year = 10; var c10 = E.custoReforma('inst.terraComum');
+    O.state.year = 60; var c60 = E.custoReforma('inst.terraComum');
+    O.state.year = 200; var c200 = E.custoReforma('inst.terraComum');
+    t(6, 'Custo de reforma cresce com a idade da instituição, com k fixo',
+      c10 < c60 && c60 < c200 && isFinite(c200),
+      'ano10=' + c10.toFixed(2) + ' ano60=' + c60.toFixed(2) + ' ano200=' + c200.toFixed(2));
+  })();
+
+  // ---- 7. custo de reforma cresce com k, com teto ~3,59× (D19) ---------
+  (function () {
+    partida(42);
+    E.adopt('inst.terraComum');
+    O.state.year = 30;
+    O.state.pendulums.main.k = 0;      var k0 = E.custoReforma('inst.terraComum');
+    O.state.pendulums.main.k = 0.7;    var k7 = E.custoReforma('inst.terraComum');
+    O.state.pendulums.main.k = 0.9999; var k9 = E.custoReforma('inst.terraComum');
+    var razao = k9 / k0;
+    t(7, 'Custo de reforma cresce com a rigidez k, e o teto operacional fica em ~3,59× (D19)',
+      k0 < k7 && k7 < k9 && razao > 3.5 && razao < 3.7,
+      'k=0 -> ' + k0.toFixed(2) + ' · k=0.7 -> ' + k7.toFixed(2) + ' · k=0.9999 -> ' + k9.toFixed(2) +
+      ' · razão=' + razao.toFixed(3));
+  })();
+
+  // ---- 8. reform(): troca os mods e cobra legitimidade ------------------
+  (function () {
+    partida(42);
+    E.adopt('inst.chefiaAloca');
+    O.state.era = 0;                                   // volta para reformar o par
+    var jobsAntes = O.Mods.get('jobs', { jobs: 10 });
+    var legitAntes = O.state.meters.legitimacy;
+    var novo = E.reform('inst.chefiaAloca', 'inst.terraComum');
+    var jobsDepois = O.Mods.get('jobs', { jobs: 10 });
+    var growthDepois = O.Mods.get('growth', { growth: 1 });
+    var vig = E.vigentes().map(function (v) { return v.id; });
+    var reformas = O.state.chronicle.filter(function (e) { return /Reforma/.test(e.titulo || ''); });
+    t(8, 'reform(): remove os mods da instituição antiga, empurra os da nova, cobra legitimidade e registra',
+      novo && jobsDepois < jobsAntes && growthDepois > 1 &&
+      vig.join(',') === 'inst.terraComum' && O.state.meters.legitimacy < legitAntes && reformas.length === 1,
+      'jobs ' + jobsAntes.toFixed(2) + '->' + jobsDepois.toFixed(2) + ' · vigentes=[' + vig.join(',') +
+      '] · legitimidade ' + legitAntes + '->' + O.state.meters.legitimacy.toFixed(2));
+  })();
+
+  // ---- 9. RE-REGISTRO pós-load (D28 + D37) ------------------------------
+  (function () {
+    partida(42);
+    E.adopt('inst.chefiaAloca');
+    var comInst = O.Mods.get('jobs', { jobs: 10 });
+    O.save();
+    O.reset(999);                                      // destrói tudo, zera a closure do Mods
+    var zerado = O.Mods.get('jobs', { jobs: 10 });
+    var okLoad = O.load();
+    // após o load os mods NÃO existem: a closure do Mods foi zerada pela D37.
+    var antesDoTick = O.Mods.get('jobs', { jobs: 10 });
+    O.state.year++;
+    E.vigentes();                                      // qualquer toque no S8 re-registra
+    var depois = O.Mods.get('jobs', { jobs: 10 });
+    t(9, 'Re-registro pós-load: a closure do Mods zera (D37) e o S8 repõe os modificadores das instituições vigentes (D28)',
+      okLoad && comInst > 10 && zerado === 10 && antesDoTick === 10 && depois === comInst,
+      'com instituição=' + comInst.toFixed(2) + ' · após reset=' + zerado + ' · logo após load=' + antesDoTick +
+      ' · após tocar o S8=' + depois.toFixed(2));
+  })();
+
+  // ---- 10. era:ready abre a decisão, pausa e dimensiona por geo ---------
+  (function () {
+    partida(42);
+    var abertas = [];
+    var off = O.bus.on('decision:open', function (p) { abertas.push(p); });
+    O.loop.resume();
+    O.bus.emit('era:ready', { era: 0, knowledge: 120 });
+    off();
+    var p = abertas[0];
+    var ctx = p && p.contexto;
+    var material = ctx && ctx.forestTiles > 0 && ctx.landTiles > 0 && typeof ctx.hasRiver === 'boolean';
+    t(10, 'era:ready abre decision:open com a carta dimensionada por state.geo, e pausa o jogo pelo loop (5.7)',
+      abertas.length === 1 && p.opcoes.length === 2 && material && O.loop.isPaused() === true,
+      'aberturas=' + abertas.length + ' · opções=' + (p ? p.opcoes.length : 0) +
+      ' · contexto={floresta:' + (ctx && ctx.forestTiles) + ', terra:' + (ctx && ctx.landTiles) +
+      ', rio:' + (ctx && ctx.hasRiver) + '} · pausado=' + O.loop.isPaused());
+  })();
+
+  // ---- 11. conhecimento consumido na virada (pendência da D41) ---------
+  (function () {
+    partida(42);
+    O.state.meters.knowledge = 140;
+    E.adopt('inst.terraComum');
+    var depois = O.state.meters.knowledge;
+    // o S7 emite era:ready com limiar fixo 100: abaixo dele, a era seguinte
+    // não abre no mesmo instante
+    t(11, 'A adoção CONSOME conhecimento, senão o era:ready da era seguinte dispararia no mesmo instante (D41)',
+      depois === 40 && depois < 100,
+      'conhecimento 140 -> ' + depois + ' · abaixo do limiar fixo do S7 (100)=' + (depois < 100));
+  })();
+
+  // ---- 12. export e fronteira de propriedade ----------------------------
+  (function () {
+    partida(42);
+    var chaves = Object.keys(O.Eras).sort().join(',');
+    var esperado = 'ERAS,INSTITUTIONS,adopt,custoReforma,opcoes,reform,vigentes';
+    O.state.camera.x = 77; O.state.hover = { x: 1, y: 2 };
+    O.state.tiles.owner[10] = 1;
+    var alheio = JSON.stringify({
+      camera: O.state.camera, hover: O.state.hover, sim: O.state.sim,
+      res: O.state.res, owner10: O.state.tiles.owner[10]
+    });
+    E.adopt('inst.terraComum');
+    E.opcoes(); E.vigentes(); E.custoReforma('inst.terraComum');
+    var depois = JSON.stringify({
+      camera: O.state.camera, hover: O.state.hover, sim: O.state.sim,
+      res: O.state.res, owner10: O.state.tiles.owner[10]
+    });
+    t(12, 'Export { ERAS, INSTITUTIONS, opcoes, adopt, reform, custoReforma, vigentes } e nada escrito em camera, hover, sim, res ou owner',
+      chaves === esperado && alheio === depois,
+      '[' + chaves + '] · estado alheio intocado=' + (alheio === depois));
+  })();
+
+  render(res, 'saida', 'resumo', 'OIKOS S8');
+
+  function render(lista, elTab, elRes, tag) {
+    lista.sort(function (a, b) { return a.id - b.id; });
+    var linhas = lista.map(function (r) {
+      var cls = r.skip ? 'skip' : (r.ok ? 'pass' : 'fail');
+      var txt = r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL');
+      return '<tr><td>' + r.id + '</td><td>' + r.nome + '</td><td class="' + cls + '">' + txt +
+        '</td><td class="det">' + r.det + '</td></tr>';
+    }).join('');
+    document.getElementById(elTab).innerHTML =
+      '<table><tr><th>#</th><th>Critério</th><th>Status</th><th>Detalhe</th></tr>' + linhas + '</table>';
+    var exec = lista.filter(function (r) { return !r.skip; });
+    var pass = exec.filter(function (r) { return r.ok; }).length;
+    var resumo = pass + '/' + exec.length + ' PASS';
+    document.getElementById(elRes).innerHTML =
+      '<b class="' + (pass === exec.length ? 'pass' : 'fail') + '">' + resumo + '</b>';
+    console.table(lista.map(function (r) {
+      return { '#': r.id, criterio: r.nome, status: r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL'), detalhe: r.det };
+    }));
+    console.log(tag + ' harness: ' + resumo);
+  }
+})();
+</script>
+</body>
+</html>
