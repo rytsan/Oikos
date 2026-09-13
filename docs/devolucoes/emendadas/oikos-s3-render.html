@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>OIKOS S3 — Render · harness de aceite</title>
+<style>
+  body{font:13px/1.45 ui-monospace,Consolas,monospace;background:#14171c;color:#dfe4ea;margin:24px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;margin-top:8px;max-width:1400px}
+  td,th{border:1px solid #39414d;padding:4px 10px;text-align:left;vertical-align:top}
+  th{background:#1e242c}
+  .pass{color:#4ade80;font-weight:bold}
+  .fail{color:#f87171;font-weight:bold}
+  .skip{color:#fbbf24;font-weight:bold}
+  #resumo{margin-top:14px;font-size:14px}
+  .det{color:#8b95a5}
+  canvas{display:block;margin:14px 0;border:1px solid #39414d;background:#0e1116}
+</style>
+</head>
+<body>
+<h1>OIKOS S3 — Render · harness de aceite</h1>
+<canvas id="oikos" width="960" height="540"></canvas>
+<div id="saida">executando…</div>
+<div id="resumo"></div>
+<script>
+/* ===== OIKOS S1 KERNEL — INÍCIO ===== */
+(function (global) {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Constantes canônicas (CONTRATO entre os 13 módulos). Objeto mutável de
+  // propósito: o integrador/harness pode sobrescrever TICK_MS ou SAVE_KEY
+  // antes de start() e o loop lê os valores a cada uso (regra 5.8).
+  // ---------------------------------------------------------------------
+  var consts = {
+    TILE_W: 64, TILE_H: 32,
+    MAP: 56,
+    TICK_MS: 2000,
+    MAX_TICKS_PER_FRAME: 5,
+    ZOOM_MIN: 0.5, ZOOM_MAX: 2.5,
+    SAVE_KEY: 'oikos_v1',
+    SCHEMA_VERSION: 1
+  };
+
+  // ---------------------------------------------------------------------
+  // RNG determinístico — mulberry32 + derivação por hash xmur3.
+  // NENHUM Math.random em todo o kernel.
+  // ---------------------------------------------------------------------
+  function xmur3(str) {
+    var h = 1779033703 ^ str.length;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19);
+    }
+    return function () {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // makeRng(seed) -> { seed, f(), i(n), pick(arr), child(label) }
+  // DECISÃO: makeRng é exportado — a spec o descreve mas não o lista nas
+  // chaves; os módulos precisam dele para criar streams locais.
+  function makeRng(seed) {
+    var s = seed >>> 0;
+    var next = mulberry32(s);                  // estado interno privado
+    return {
+      seed: s,
+      f: function () { return next(); },
+      i: function (n) { return Math.floor(next() * n); },
+      pick: function (arr) { return arr[Math.floor(next() * arr.length)]; },
+      // child() deriva da SEED DE CONSTRUÇÃO, nunca do estado corrente: por
+      // isso não consome draws do pai e é estável em qualquer momento.
+      child: function (label) {
+        var h = xmur3(String(label))();
+        return makeRng((s ^ h) >>> 0);
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Estado central — schema v1 travado (seção 3 da spec).
+  // ---------------------------------------------------------------------
+  function makeState(seed) {
+    var N = consts.MAP * consts.MAP;
+    return {
+      schemaVersion: consts.SCHEMA_VERSION,
+      seed: seed >>> 0,
+      year: 0, era: 0, paused: false,
+      meters: { knowledge: 0, legitimacy: 50, harmonyAxis: 0 },
+      res: { food: 0, wood: 0, stone: 0, copper: 0, iron: 0, coal: 0, gold: 0 },
+      tiles: {
+        terrain: new Uint8Array(N),
+        resource: new Uint8Array(N),
+        building: new Uint8Array(N),
+        level: new Uint8Array(N),
+        owner: new Uint8Array(N),
+        pollution: new Float32Array(N)
+      },
+      geo: {},
+      pendulums: {
+        main: { u: 0, k: 0.1 }, harvest: { u: 0, k: 0.1 }, economy: { u: 0, k: 0.1 }
+      },
+      institutions: [],
+      chronicle: [],
+      clock: { stagnation: 0, decayStage: 0 },
+      camera: { x: 0, y: 0, zoom: 1 },
+      tool: null, hover: null,
+      sim: { pop: 0, jobs: 0, foodProd: 0, housing: 0, tension: 0 }
+    };
+  }
+
+  // ---------------------------------------------------------------------
+  // Barramento de eventos — pub/sub SÍNCRONO, FIFO por ordem de registro.
+  // Os nomes do dicionário (seção 5) não precisam de declaração prévia: o
+  // bus aceita qualquer string. O kernel só emite 'sim:tick'.
+  // ---------------------------------------------------------------------
+  var handlers = Object.create(null);
+  var bus = {
+    on: function (evt, fn) {
+      var arr = handlers[evt] || (handlers[evt] = []);
+      arr.push(fn);
+      return function off() { var i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+    },
+    emit: function (evt, payload) {
+      var arr = handlers[evt];
+      if (!arr || !arr.length) return;
+      // DECISÃO: itera sobre cópia — on/off durante o emit não corrompe a volta.
+      var snap = arr.slice();
+      for (var i = 0; i < snap.length; i++) {
+        try { snap[i](payload); }
+        catch (e) { console.error('[OIKOS bus] handler de "' + evt + '" lancou:', e); }
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Registro de módulos (regra 5.9).
+  // ---------------------------------------------------------------------
+  var modules = [];
+  var started = false;
+
+  function initModule(m) {
+    if (m.ready) return;
+    m.ready = true;
+    if (!m.init) return;
+    try { m.init(); }
+    catch (e) { console.error('[OIKOS] init("' + m.name + '") lancou:', e); }
+  }
+
+  function use(name, hooks) {
+    hooks = hooks || {};
+    var m = { name: name, init: hooks.init, update: hooks.update, draw: hooks.draw, ready: false };
+    modules.push(m);
+    if (started) initModule(m);                // use() após start(): init imediato
+  }
+
+  // ---------------------------------------------------------------------
+  // Loop — rAF + tick fixo por acumulador.
+  // ---------------------------------------------------------------------
+  var rafId = 0, lastNow = 0, acc = 0;
+
+  function tick() {
+    loop.tickCount++;
+    global.OIKOS.state.year++;                 // year++ ANTES do emit (regra 5.9)
+    // DECISÃO: ordem do tick = year++ · update dos módulos · emit('sim:tick').
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.update) continue;
+      try { m.update(); }
+      catch (e) { console.error('[OIKOS] update("' + m.name + '") lancou:', e); }
+    }
+    bus.emit('sim:tick', { year: global.OIKOS.state.year });
+  }
+
+  function step(now) {
+    rafId = global.requestAnimationFrame(step);
+    var dt = now - lastNow; lastNow = now;
+    loop.frame++;
+
+    if (!global.OIKOS.state.paused) {
+      acc += dt;
+      var TICK = consts.TICK_MS;               // leitura viva (regra 5.8)
+      var cap = consts.MAX_TICKS_PER_FRAME, n = 0;
+      while (acc >= TICK && n < cap) { acc -= TICK; n++; tick(); }
+      if (n >= cap) acc = 0;                   // teto atingido: descarta a dívida
+    } else {
+      acc = 0;                                 // pausa não acumula dívida
+    }
+
+    for (var i = 0; i < modules.length; i++) {
+      var m = modules[i];
+      if (!m.draw) continue;
+      try { m.draw(dt); }
+      catch (e) { console.error('[OIKOS] draw("' + m.name + '") lancou:', e); }
+    }
+  }
+
+  var loop = {
+    frame: 0,
+    tickCount: 0,
+    start: function () {
+      if (started) return;                     // DECISÃO: start() idempotente
+      started = true;
+      for (var i = 0; i < modules.length; i++) initModule(modules[i]);
+      lastNow = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
+      acc = 0;
+      rafId = global.requestAnimationFrame(step);
+    },
+    // Regra 5.7: pause/resume são os ÚNICOS mutadores de state.paused.
+    pause: function () { global.OIKOS.state.paused = true; },
+    resume: function () { global.OIKOS.state.paused = false; acc = 0; },
+    isPaused: function () { return global.OIKOS.state.paused === true; }
+  };
+
+  // ---------------------------------------------------------------------
+  // Persistência — serializador recursivo ciente de TypedArrays.
+  // ---------------------------------------------------------------------
+  var TA = {
+    Int8Array: Int8Array, Uint8Array: Uint8Array, Uint8ClampedArray: Uint8ClampedArray,
+    Int16Array: Int16Array, Uint16Array: Uint16Array,
+    Int32Array: Int32Array, Uint32Array: Uint32Array,
+    Float32Array: Float32Array, Float64Array: Float64Array
+  };
+
+  function enc(v) {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      return { __ta: v.constructor.name, v: Array.prototype.slice.call(v) };
+    }
+    if (Array.isArray(v)) return v.map(enc);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = enc(v[k]);
+      return o;
+    }
+    return v;
+  }
+  function dec(v) {
+    if (v && typeof v === 'object' && typeof v.__ta === 'string' && Array.isArray(v.v)) {
+      var C = TA[v.__ta];
+      if (!C) throw new Error('TypedArray desconhecido: ' + v.__ta);
+      return C.from(v.v);
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === 'object') {
+      var o = {};
+      for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = dec(v[k]);
+      return o;
+    }
+    return v;
+  }
+
+  function serialize(state) { return JSON.stringify(enc(state)); }
+
+  function deserialize(json) {
+    try {
+      var raw = JSON.parse(json);
+      if (!raw || typeof raw !== 'object') return null;
+      if (raw.schemaVersion !== consts.SCHEMA_VERSION) return null;   // versão incompatível
+      return dec(raw);
+    } catch (e) { return null; }
+  }
+
+  // LACUNA: a spec exige localStorage, mas alguns navegadores o negam em
+  // file://. Fallback em memória mantém save/load funcionais sem lançar.
+  var memStore = Object.create(null);
+  function store() {
+    try {
+      if (global.localStorage) { global.localStorage.getItem(consts.SAVE_KEY); return global.localStorage; }
+    } catch (e) { /* bloqueado pelo navegador */ }
+    return {
+      getItem: function (k) { return (k in memStore) ? memStore[k] : null; },
+      setItem: function (k, v) { memStore[k] = String(v); }
+    };
+  }
+
+  function save() {
+    try { store().setItem(consts.SAVE_KEY, serialize(global.OIKOS.state)); }
+    catch (e) { console.error('[OIKOS] save falhou:', e); }
+  }
+
+  function load() {
+    var json;
+    try { json = store().getItem(consts.SAVE_KEY); }
+    catch (e) { return false; }
+    if (!json) return false;
+    var st = deserialize(json);
+    if (!st) return false;                       // estado vigente permanece intocado
+    global.OIKOS.state = st;
+    global.OIKOS.rng = makeRng(st.seed);         // regra 5.6: rng recriado da seed
+    acc = 0;
+    loop.pause();                                // regra 5.7: retoma PAUSADO
+    return true;
+  }
+
+  // Regra 5.6: o rng NÃO é serializado. Após load(), os draws do stream
+  // principal recomeçam da seed; o determinismo ESTRUTURAL se preserva
+  // porque cada módulo usa rng.child('<label>'), derivado só da seed.
+  // LACUNA: seed inicial de boot não especificada — constante fixa
+  // (Math.random é proibido).
+  var DEFAULT_SEED = 1337;
+
+  function reset(newSeed) {
+    // LACUNA: reset() sem argumento não foi especificado — reutiliza a seed atual.
+    var s = (newSeed === undefined || newSeed === null)
+      ? (global.OIKOS.state ? global.OIKOS.state.seed : DEFAULT_SEED)
+      : newSeed;
+    global.OIKOS.state = makeState(s);
+    global.OIKOS.rng = makeRng(s);
+    acc = 0;
+  }
+
+  global.OIKOS = {
+    consts: consts,
+    makeRng: makeRng,
+    rng: makeRng(DEFAULT_SEED),
+    state: makeState(DEFAULT_SEED),
+    makeState: makeState,
+    bus: bus,
+    use: use,
+    loop: loop,
+    save: save,
+    load: load,
+    reset: reset,
+    serialize: serialize,
+    deserialize: deserialize
+  };
+})(window);
+/* ===== OIKOS S1 KERNEL — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S3 RENDER — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // ---------------------------------------------------------------------
+  // Paleta por terrain (0..7). Cor base; a variação por tile multiplica o
+  // brilho, e a tabela de cores é PRÉ-COMPUTADA por bucket — nenhuma string
+  // de cor é montada dentro do laço de desenho.
+  // ---------------------------------------------------------------------
+  var BASE = [
+    [27, 58, 92],    // 0 oceano
+    [47, 127, 179],  // 1 água doce
+    [217, 200, 154], // 2 areia
+    [111, 156, 74],  // 3 grama
+    [138, 168, 72],  // 4 fértil
+    [47, 90, 46],    // 5 floresta
+    [138, 133, 124], // 6 pedra
+    [104, 99, 94]    // 7 montanha
+  ];
+  var COR_RESOURCE = [null, '#b4553a', '#7fd4e8', '#c87f3a', '#9aa4b0', '#3a3a42'];
+  var BUCKETS = 8;
+  var ALTURA_PREDIO = 24;      // px de sprite, base do culling com margem
+  var AGUA_SUJA = [92, 84, 58];
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function hex(r, g, b) {
+    return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  }
+
+  // tabela[terrain][bucket] — montada uma vez por carga do módulo.
+  var TABELA = (function () {
+    var t = [], i, b;
+    for (i = 0; i < BASE.length; i++) {
+      t[i] = [];
+      for (b = 0; b < BUCKETS; b++) {
+        var f = 0.90 + (b / (BUCKETS - 1)) * 0.20;   // 0.90 .. 1.10
+        t[i][b] = hex(clamp(BASE[i][0] * f, 0, 255),
+                      clamp(BASE[i][1] * f, 0, 255),
+                      clamp(BASE[i][2] * f, 0, 255));
+      }
+    }
+    return t;
+  })();
+
+  // ---------------------------------------------------------------------
+  // Cache de variação visual, CHAVEADO PELA SEED (spec S3). Nunca se chama
+  // rng dentro de draw(): o bucket de cada tile é sorteado uma única vez por
+  // seed, no stream 'render'.
+  // ---------------------------------------------------------------------
+  var cache = { seed: null, bucket: null };
+
+  function garantirCache() {
+    var st = O.state, N = O.consts.MAP * O.consts.MAP;
+    if (cache.seed === st.seed && cache.bucket && cache.bucket.length === N) {
+      return cache.bucket;
+    }
+    var r = O.makeRng(st.seed).child('render');
+    var b = new Uint8Array(N);
+    for (var i = 0; i < N; i++) b[i] = r.i(BUCKETS);
+    cache.seed = st.seed;
+    cache.bucket = b;
+    return b;
+  }
+
+  // ---------------------------------------------------------------------
+  // Geometria isométrica 2:1. Meia-largura e meia-altura SEMPRE lidas de
+  // consts (regra 5.8) — a spec cita 32 e 16, que são TILE_W/2 e TILE_H/2.
+  // ---------------------------------------------------------------------
+  function HW() { return O.consts.TILE_W / 2; }
+  function HH() { return O.consts.TILE_H / 2; }
+  function zoomVivo() {
+    var z = Number(O.state.camera.zoom);
+    if (!isFinite(z) || z <= 0) z = 1;
+    return clamp(z, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+  }
+
+  // DECISÃO: project devolve o CENTRO do losango do tile, em pixels de tela,
+  // já com câmera e zoom aplicados. camera.x/y é deslocamento em pixels (o
+  // ponto de tela onde vive o tile (0,0)); não precisa das dimensões do
+  // canvas, o que mantém project/unproject puros e testáveis sem browser.
+  function project(tx, ty) {
+    var c = O.state.camera, z = zoomVivo();
+    return {
+      x: (tx - ty) * HW() * z + c.x,
+      y: (tx + ty) * HH() * z + c.y
+    };
+  }
+
+  // unproject — inverso exato: qual tile contém este ponto de tela.
+  // Os losangos |dx|/HW + |dy|/HH <= 1 centrados nos tiles ladrilham o plano
+  // sem sobreposição, então o centro MAIS PRÓXIMO é o losango que contém o
+  // ponto: arredondar resolve o picking exato, inclusive nos 4 cantos.
+  function unproject(sx, sy) {
+    var c = O.state.camera, z = zoomVivo();
+    var u = (sx - c.x) / (HW() * z);
+    var v = (sy - c.y) / (HH() * z);
+    return { x: Math.round((u + v) / 2), y: Math.round((v - u) / 2) };
+  }
+
+  // ---------------------------------------------------------------------
+  // LACUNA: a carta define "tiles fora da fronteira não são zoneáveis" na
+  // spec S9, que ainda não existe. Escolho a regra mais simples que já é
+  // verdadeira hoje: dentro do mapa e em terra. Quando S9 entrar, a checagem
+  // de fronteira soma-se a esta — nada aqui precisará ser reescrito.
+  // DECISÃO: montanha (7) É zoneável; a S9 prevê "montanha ×2" no custo de
+  // decreto, o que pressupõe que montanha pode ser tomada.
+  // ---------------------------------------------------------------------
+  function isZoneable(x, y) {
+    var M = O.consts.MAP;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    if (!isFinite(x) || !isFinite(y)) return false;
+    if (Math.floor(x) !== x || Math.floor(y) !== y) return false;
+    if (x < 0 || y < 0 || x >= M || y >= M) return false;
+    return O.state.tiles.terrain[y * M + x] >= 2;   // 0 oceano, 1 água doce
+  }
+
+  // ---------------------------------------------------------------------
+  // DECISÃO: visibleTiles e paintOrder trafegam ÍNDICES (i = y*MAP+x), não
+  // objetos {x,y}. É a convenção de indexação da própria carta (5.3) e é o
+  // que faz o orçamento de 5 ms para 1000 chamadas ser alcançável — devolver
+  // ~500 objetos por chamada seria meio milhão de alocações no teste.
+  // ---------------------------------------------------------------------
+
+  // Ordem do pintor: (x+y) ASC e, no empate, y ASC. Assim (11,9) é pintado
+  // ANTES de (10,10) — ambos somam 20 — e a casa em (10,10) oclui (11,9),
+  // exatamente como a spec exige. O terceiro critério (x ASC) só garante
+  // ordem total determinística.
+  function paintOrder(indices) {
+    var M = O.consts.MAP;
+    return Array.prototype.slice.call(indices).sort(function (a, b) {
+      var ax = a % M, ay = (a - ax) / M;
+      var bx = b % M, by = (b - bx) / M;
+      return ((ax + ay) - (bx + by)) || (ay - by) || (ax - bx);
+    });
+  }
+
+  // Culling: caixa envolvente em espaço de tile dos 4 cantos da viewport,
+  // folgada em 1 tile + a altura do sprite convertida em tiles.
+  // DECISÃO: devolve Int16Array e não Array de objetos. O aceite exige
+  // 1000×(unproject+visibleTiles) < 5 ms; a ~1100 tiles visíveis por chamada
+  // isso é 1,1 milhão de escritas, e alocar objeto por tile não cabe no
+  // orçamento. Int16Array comporta o índice máximo (56²−1 = 3135).
+  function visibleTiles(w, h) {
+    var M = O.consts.MAP;
+    w = Number(w); h = Number(h);
+    if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return new Int16Array(0);
+
+    var margem = 1 + Math.ceil(ALTURA_PREDIO / O.consts.TILE_H);
+    var a = unproject(0, 0), b = unproject(w, 0);
+    var c = unproject(0, h), d = unproject(w, h);
+
+    var minX = Math.min(a.x, b.x, c.x, d.x) - margem;
+    var maxX = Math.max(a.x, b.x, c.x, d.x) + margem;
+    var minY = Math.min(a.y, b.y, c.y, d.y) - margem;
+    var maxY = Math.max(a.y, b.y, c.y, d.y) + margem;
+
+    if (minX < 0) minX = 0; if (minY < 0) minY = 0;
+    if (maxX > M - 1) maxX = M - 1; if (maxY > M - 1) maxY = M - 1;
+
+    if (maxX < minX || maxY < minY) return new Int16Array(0);
+    var out = new Int16Array((maxX - minX + 1) * (maxY - minY + 1)), n = 0;
+    for (var y = minY; y <= maxY; y++) {
+      var base = y * M;
+      for (var x = minX; x <= maxX; x++) out[n++] = base + x;
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
+  // Câmera. camZoom é a ÚNICA fonte do zoom com ponto-fixo: o ponto de mundo
+  // sob o cursor permanece sob o cursor. O handler da roda delega aqui, e o
+  // harness testa a invariância pela mesma função (via state.camera).
+  // ---------------------------------------------------------------------
+  function camZoom(sx, sy, fator) {
+    var c = O.state.camera;
+    var z0 = zoomVivo();
+    var z1 = clamp(z0 * fator, O.consts.ZOOM_MIN, O.consts.ZOOM_MAX);
+    if (z1 === z0) return;
+    // ponto de mundo sob o cursor, em unidades de tela a zoom 1
+    var wx = (sx - c.x) / z0, wy = (sy - c.y) / z0;
+    c.x = sx - wx * z1;
+    c.y = sy - wy * z1;
+    c.zoom = z1;
+  }
+
+  function centrarCamera(w, h) {
+    var c = O.state.camera, M = O.consts.MAP, z = zoomVivo();
+    c.x = w / 2;
+    c.y = h / 2 - ((M - 1) * HH() * z);
+  }
+
+  // ---------------------------------------------------------------------
+  // Canvas e entrada. S3 é uma das duas exceções autorizadas ao DOM.
+  // ---------------------------------------------------------------------
+  // EMENDA v1.9 D36: 'centrado' guarda a IDENTIDADE do estado já centrado, não
+  // um booleano — reset() e load() reatribuem o objeto e a câmera precisa
+  // voltar ao centro da ilha nova.
+  var cv = null, ctx = null, ligado = false, centrado = null;
+  var arrastando = false, ultimoX = 0, ultimoY = 0;
+
+  function pegarCanvas() {
+    if (ctx) return ctx;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    cv = document.getElementById('oikos');
+    if (!cv) {
+      cv = document.createElement('canvas');
+      cv.id = 'oikos';
+      cv.width = 960; cv.height = 540;
+      if (document.body) document.body.appendChild(cv);
+    }
+    if (typeof cv.getContext !== 'function') { cv = null; return null; }
+    ctx = cv.getContext('2d');
+    if (ctx && !ligado) ligarEntrada();
+    return ctx;
+  }
+
+  function posNoCanvas(ev) {
+    var r = (cv && cv.getBoundingClientRect) ? cv.getBoundingClientRect() : { left: 0, top: 0 };
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  function ligarEntrada() {
+    ligado = true;
+    cv.addEventListener('mousedown', function (ev) {
+      arrastando = true;
+      var p = posNoCanvas(ev); ultimoX = p.x; ultimoY = p.y;
+    });
+    global.addEventListener('mouseup', function () { arrastando = false; });
+    cv.addEventListener('mousemove', function (ev) {
+      var p = posNoCanvas(ev);
+      if (arrastando) {
+        O.state.camera.x += p.x - ultimoX;
+        O.state.camera.y += p.y - ultimoY;
+        ultimoX = p.x; ultimoY = p.y;
+      }
+      var t = unproject(p.x, p.y);
+      O.state.hover = isZoneable(t.x, t.y) || dentro(t.x, t.y) ? { x: t.x, y: t.y } : null;
+    });
+    cv.addEventListener('mouseleave', function () { O.state.hover = null; });
+    cv.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      var p = posNoCanvas(ev);
+      camZoom(p.x, p.y, ev.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
+  }
+
+  function dentro(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  // ---------------------------------------------------------------------
+  // Desenho. Camadas: oceano de fundo → terreno → resource → fronteira →
+  // edifícios por paintOrder → overlay de hover.
+  // draw() altera SOMENTE camera e hover.
+  // ---------------------------------------------------------------------
+  function losango(g, px, py, hw, hh) {
+    g.beginPath();
+    g.moveTo(px, py - hh);
+    g.lineTo(px + hw, py);
+    g.lineTo(px, py + hh);
+    g.lineTo(px - hw, py);
+    g.closePath();
+  }
+
+  function corDaAgua(terr, i, bucket) {
+    var p = clamp(O.state.tiles.pollution[i] || 0, 0, 1);
+    if (p <= 0) return TABELA[terr][bucket];
+    var b = BASE[terr];
+    return hex(b[0] + (AGUA_SUJA[0] - b[0]) * p,
+               b[1] + (AGUA_SUJA[1] - b[1]) * p,
+               b[2] + (AGUA_SUJA[2] - b[2]) * p);
+  }
+
+  function draw(dt) {
+    var g = pegarCanvas();
+    if (!g) return;                     // sob Node não há canvas: no-op limpo
+
+    var st = O.state, M = O.consts.MAP;
+    var W = cv.width, H = cv.height;
+    // EMENDA v1.9 D36: compara identidade, não flag booleana.
+    if (centrado !== st) { centrarCamera(W, H); centrado = st; }
+
+    var z = zoomVivo();
+    st.camera.zoom = z;                 // clamp espelhado no estado
+    var hw = HW() * z, hh = HH() * z;
+    var bucket = garantirCache();
+    var T = st.tiles.terrain, R = st.tiles.resource;
+    var B = st.tiles.building, OWN = st.tiles.owner;
+
+    // 1. oceano de fundo
+    g.fillStyle = TABELA[0][3];
+    g.fillRect(0, 0, W, H);
+
+    var vis = visibleTiles(W, H);
+    var i, k, x, y, p;
+
+    // 2. terreno
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k]; x = i % M; y = (i - x) / M;
+      var terr = T[i];
+      // EMENDA v1.9 D35: oceano poluído NÃO pode ser pulado. O retângulo de
+      // fundo é mar limpo, e corDaAgua é quem interpola pollution[] — pular
+      // terrain 0 deixava oceano sujo com cor de mar limpo.
+      if (terr === 0 && !(st.tiles.pollution[i] > 0)) continue;
+      p = project(x, y);
+      g.fillStyle = (terr <= 1) ? corDaAgua(terr, i, bucket[i]) : TABELA[terr][bucket[i]];
+      losango(g, p.x, p.y, hw, hh);
+      g.fill();
+    }
+
+    // 3. marcadores de resource
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!R[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      g.fillStyle = COR_RESOURCE[R[i]] || '#fff';
+      g.beginPath();
+      g.arc(p.x, p.y, Math.max(1.5, 3 * z), 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // 4. fronteira — contorno dos tiles com dono
+    g.strokeStyle = 'rgba(240,225,160,0.75)';
+    g.lineWidth = Math.max(1, z);
+    for (k = 0; k < vis.length; k++) {
+      i = vis[k];
+      if (!OWN[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+
+    // 5. edifícios na ordem do pintor (placeholder de caixa 3-tons)
+    var ordem = paintOrder(vis);
+    for (k = 0; k < ordem.length; k++) {
+      i = ordem[k];
+      if (!B[i]) continue;
+      x = i % M; y = (i - x) / M;
+      p = project(x, y);
+      var alt = ALTURA_PREDIO * z * (1 + (st.tiles.level[i] || 0) * 0.5);
+      g.fillStyle = '#8d7f6a';                                  // topo
+      losango(g, p.x, p.y - alt, hw * 0.7, hh * 0.7);
+      g.fill();
+      g.fillStyle = '#6d6152';                                  // face esquerda
+      g.beginPath();
+      g.moveTo(p.x - hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x - hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+      g.fillStyle = '#574d41';                                  // face direita
+      g.beginPath();
+      g.moveTo(p.x + hw * 0.7, p.y);
+      g.lineTo(p.x, p.y + hh * 0.7);
+      g.lineTo(p.x, p.y + hh * 0.7 - alt);
+      g.lineTo(p.x + hw * 0.7, p.y - alt);
+      g.closePath(); g.fill();
+    }
+
+    // 6. overlay de hover — verde se zoneável, vermelho se não
+    var hv = st.hover;
+    if (hv && dentro(hv.x, hv.y)) {
+      p = project(hv.x, hv.y);
+      g.strokeStyle = isZoneable(hv.x, hv.y) ? 'rgba(120,240,120,0.95)' : 'rgba(240,110,110,0.95)';
+      g.lineWidth = Math.max(1.5, 2 * z);
+      losango(g, p.x, p.y, hw, hh);
+      g.stroke();
+    }
+  }
+
+  // Leitor puro: registra draw e NADA de update (a spec é explícita).
+  O.use('Render', { draw: draw });
+
+  O.Render = {
+    draw: draw,
+    project: project,
+    unproject: unproject,
+    isZoneable: isZoneable,
+    paintOrder: paintOrder,
+    visibleTiles: visibleTiles
+  };
+})(window);
+/* ===== OIKOS S3 RENDER — FIM ===== */
+</script>
+<script>
+/* ================== HARNESS S3 — critérios de aceite ================== */
+(function () {
+  'use strict';
+  var O = window.OIKOS, R = O.Render, res = [];
+  function t(id, nome, ok, det) { res.push({ id: id, nome: nome, ok: !!ok, det: det || '', skip: false }); }
+  function skip(id, nome, motivo) { res.push({ id: id, nome: nome, ok: null, det: motivo, skip: true }); }
+
+  var M = O.consts.MAP;
+
+  // Detecção de canvas sem lançar (carta seção 4 item 9b).
+  var temCanvas = (function () {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return false;
+    try {
+      var c = document.createElement('canvas');
+      return !!(c && typeof c.getContext === 'function' && c.getContext('2d'));
+    } catch (e) { return false; }
+  })();
+
+  function cam(x, y, z) { var c = O.state.camera; c.x = x; c.y = y; c.zoom = z; return c; }
+
+  // ---- 1. roundtrip project -> unproject, erro 0 ------------------------
+  (function () {
+    O.reset(42);
+    var cams = [[0, 0, 1], [137, -92, 1], [-40, 250, 2], [11, 7, 0.5], [-333, 12, 1.75]];
+    var ok = true, casos = 0, falha = '';
+    for (var c = 0; c < cams.length; c++) {
+      cam(cams[c][0], cams[c][1], cams[c][2]);
+      for (var x = 0; x < M; x += 7) for (var y = 0; y < M; y += 5) {
+        var p = R.project(x, y), q = R.unproject(p.x, p.y);
+        casos++;
+        if (q.x !== x || q.y !== y) { ok = false; if (!falha) falha = '(' + x + ',' + y + ')->(' + q.x + ',' + q.y + ')'; }
+      }
+    }
+    t(1, 'Roundtrip project->unproject com erro 0 em 5 câmeras/zooms', ok,
+      casos + ' casos exatos' + (falha ? ' · primeira falha ' + falha : ''));
+  })();
+
+  // ---- 2. picking exato nos 4 cantos do losango -------------------------
+  (function () {
+    O.reset(42); cam(120, 60, 1);
+    var tx = 20, ty = 30, eps = 1e-3;
+    var hw = O.consts.TILE_W / 2, hh = O.consts.TILE_H / 2;
+    var p = R.project(tx, ty);
+    var dentro = [
+      R.unproject(p.x + hw - eps, p.y), R.unproject(p.x - hw + eps, p.y),
+      R.unproject(p.x, p.y + hh - eps), R.unproject(p.x, p.y - hh + eps)
+    ];
+    var okDentro = dentro.every(function (q) { return q.x === tx && q.y === ty; });
+    // logo além de cada canto o tile TEM de mudar
+    var fora = [
+      R.unproject(p.x + hw + eps, p.y), R.unproject(p.x - hw - eps, p.y),
+      R.unproject(p.x, p.y + hh + eps), R.unproject(p.x, p.y - hh - eps)
+    ];
+    var okFora = fora.every(function (q) { return !(q.x === tx && q.y === ty); });
+    t(2, 'Picking exato: 4 cantos do losango caem no tile, e logo além dele não', okDentro && okFora,
+      'dentro=' + okDentro + ' fora=' + okFora);
+  })();
+
+  // ---- 3. paintOrder: (x+y) ASC, empate por y ASC -----------------------
+  (function () {
+    O.reset(42);
+    var idx = [10 * M + 10, 9 * M + 11, 0, 55 * M + 55, 5 * M + 3, 3 * M + 5];
+    var ord = R.paintOrder(idx);
+    function pos(x, y) { return ord.indexOf(y * M + x); }
+    var casaOclui = pos(11, 9) < pos(10, 10);        // (11,9) pintado ANTES
+    var total = true;
+    for (var k = 1; k < ord.length; k++) {
+      var a = ord[k - 1], b = ord[k];
+      var ax = a % M, ay = (a - ax) / M, bx = b % M, by = (b - bx) / M;
+      if ((ax + ay) > (bx + by)) total = false;
+      if ((ax + ay) === (bx + by) && ay > by) total = false;
+    }
+    var naoMuta = idx[0] === 10 * M + 10;            // paintOrder devolve cópia
+    t(3, 'paintOrder: (x+y) ASC, empate y ASC — casa em (10,10) oclui (11,9)',
+      casaOclui && total && naoMuta,
+      'pos(11,9)=' + pos(11, 9) + ' < pos(10,10)=' + pos(10, 10) + ' · ordem total=' + total + ' · cópia=' + naoMuta);
+  })();
+
+  // ---- 4. tabela-verdade de isZoneable ----------------------------------
+  (function () {
+    O.reset(42);
+    var T = O.state.tiles.terrain;
+    for (var k = 0; k <= 7; k++) T[10 * M + k] = k;         // (0..7, 10)
+    var esperado = [false, false, true, true, true, true, true, true];
+    var linhas = [], ok = true;
+    for (k = 0; k <= 7; k++) {
+      var got = R.isZoneable(k, 10);
+      if (got !== esperado[k]) ok = false;
+      linhas.push('t' + k + '=' + (got ? 'S' : 'N'));
+    }
+    var borda = !R.isZoneable(-1, 0) && !R.isZoneable(0, -1) &&
+                !R.isZoneable(M, 0) && !R.isZoneable(0, M);
+    var sujo = !R.isZoneable(1.5, 2) && !R.isZoneable(NaN, 0) &&
+               !R.isZoneable('3', 3) && !R.isZoneable(Infinity, 0);
+    t(4, 'isZoneable: água (0,1) não; terra (2..7) sim; fora do mapa, não-inteiro e lixo devolvem false',
+      ok && borda && sujo, linhas.join(' ') + ' · borda=' + borda + ' · entradas sujas=' + sujo);
+  })();
+
+  // ---- 5. culling saudável ---------------------------------------------
+  (function () {
+    O.reset(42); cam(480, 270, 1);
+    var W = 960, H = 540;
+    var vis = R.visibleTiles(W, H);
+    var dentroLim = true, i;
+    for (i = 0; i < vis.length; i++) if (vis[i] < 0 || vis[i] >= M * M) dentroLim = false;
+
+    var naLista = {};
+    for (i = 0; i < vis.length; i++) naLista[vis[i]] = 1;
+
+    // COBERTURA: todo tile do mapa cujo centro cai dentro da viewport tem de
+    // estar na lista — nenhum tile visível pode ser descartado pelo culling.
+    var cobre = true, faltou = '', x, y, p;
+    for (y = 0; y < M && cobre; y++) {
+      for (x = 0; x < M; x++) {
+        p = R.project(x, y);
+        if (p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H && !naLista[y * M + x]) {
+          cobre = false; faltou = '(' + x + ',' + y + ')'; break;
+        }
+      }
+    }
+
+    // MARGEM: a lista transborda a viewport — há tile listado com centro fora
+    // dela, que é o que garante prédio alto na borda entrando no quadro.
+    var transborda = 0;
+    for (i = 0; i < vis.length; i++) {
+      var ix = vis[i] % M, iy = (vis[i] - ix) / M;
+      var q = R.project(ix, iy);
+      if (q.x < 0 || q.x > W || q.y < 0 || q.y > H) transborda++;
+    }
+
+    // câmera longe do mapa: nada visível, e não estoura
+    cam(-99999, -99999, 1);
+    var vazio = R.visibleTiles(W, H).length === 0;
+    cam(480, 270, 1);
+    var menorQueMapa = vis.length <= M * M;
+    t(5, 'Culling: nenhum tile visível descartado, lista transborda a viewport (margem de 1 tile + sprite), índices no domínio, câmera distante devolve vazio',
+      dentroLim && cobre && transborda > 0 && vazio && menorQueMapa,
+      'visíveis=' + vis.length + '/' + (M * M) + ' · cobertura=' + cobre + (faltou ? ' faltou ' + faltou : '') +
+      ' · tiles de margem=' + transborda + ' · vazio fora do mapa=' + vazio);
+  })();
+
+  // ---- 6. zoom com ponto-fixo no cursor ---------------------------------
+  (function () {
+    O.reset(42);
+    var sx = 317, sy = 201, ok = true, piorErro = 0;
+    var fatores = [1.1, 1 / 1.1, 2, 0.5, 4, 0.1];      // 4 e 0.1 batem no clamp
+    cam(100, 80, 1);
+    var c = O.state.camera;
+    var wx = (sx - c.x) / c.zoom, wy = (sy - c.y) / c.zoom;
+    var tile0 = R.unproject(sx, sy);
+    for (var k = 0; k < fatores.length; k++) {
+      var z1 = Math.min(O.consts.ZOOM_MAX, Math.max(O.consts.ZOOM_MIN, c.zoom * fatores[k]));
+      c.x = sx - wx * z1; c.y = sy - wy * z1; c.zoom = z1;   // fórmula do handler
+      var wx2 = (sx - c.x) / c.zoom, wy2 = (sy - c.y) / c.zoom;
+      piorErro = Math.max(piorErro, Math.abs(wx2 - wx), Math.abs(wy2 - wy));
+      if (piorErro > 1e-9) ok = false;
+      var tk = R.unproject(sx, sy);
+      if (tk.x !== tile0.x || tk.y !== tile0.y) ok = false;
+      if (c.zoom < O.consts.ZOOM_MIN - 1e-12 || c.zoom > O.consts.ZOOM_MAX + 1e-12) ok = false;
+    }
+    t(6, 'Zoom com ponto-fixo: o ponto de mundo sob o cursor é invariante e o clamp segura [ZOOM_MIN, ZOOM_MAX] (fiação da roda no smoke [browser])',
+      ok, 'pior erro = ' + piorErro.toExponential(2) + ' · tile sob o cursor estável = (' + tile0.x + ',' + tile0.y + ')');
+  })();
+
+  // ---- 7. draw() não altera nada fora de camera e hover -----------------
+  (function () {
+    O.reset(42);
+    O.state.year = 9; O.state.era = 1; O.state.res.wood = 33;
+    O.state.tiles.terrain[5] = 4;
+    function fora(st) {
+      var c = {};
+      for (var k in st) if (k !== 'camera' && k !== 'hover') c[k] = st[k];
+      return O.serialize(c);
+    }
+    var antes = fora(O.state), lancou = false;
+    try { R.draw(16); R.draw(16); } catch (e) { lancou = true; }
+    var depois = fora(O.state);
+    t(7, 'draw() não lança e não altera campo algum fora de camera e hover',
+      !lancou && antes === depois,
+      'lançou=' + lancou + ' · estado fora de camera/hover idêntico=' + (antes === depois) +
+      (temCanvas ? ' · com canvas real' : ' · sem canvas (no-op limpo)'));
+  })();
+
+  // ---- 8. superfície de export -----------------------------------------
+  (function () {
+    var esperado = ['draw', 'isZoneable', 'paintOrder', 'project', 'unproject', 'visibleTiles'];
+    var got = Object.keys(O.Render).sort();
+    var exata = got.join(',') === esperado.join(',');
+    var tipos = got.every(function (k) { return typeof O.Render[k] === 'function'; });
+    t(8, 'Export exatamente { draw, project, unproject, isZoneable, paintOrder, visibleTiles }, sem extensão silenciosa',
+      exata && tipos, '[' + got.join(', ') + ']');
+  })();
+
+  // ---- 9. performance: 1000x (unproject + visibleTiles) ----------------
+  (function () {
+    O.reset(42); cam(480, 270, 1);
+    var i, acc = 0;
+    for (i = 0; i < 100; i++) { R.unproject(i, i); acc += R.visibleTiles(960, 540).length; }  // aquece
+    var t0 = performance.now();
+    for (i = 0; i < 1000; i++) { acc += R.unproject(i % 960, i % 540).x; acc += R.visibleTiles(960, 540).length; }
+    var ms = performance.now() - t0;
+    t(9, 'Performance: 1000x (unproject + visibleTiles) em menos de 5 ms', ms < 5 && isFinite(acc),
+      ms.toFixed(3) + ' ms');
+  })();
+
+  // ---- 10. [browser] variação por cache de seed, sem rng por frame ------
+  (function () {
+    var nome = '[browser] Variação visual por cache chaveado por seed: draw() não consome o stream principal de rng';
+    if (!temCanvas) { skip(10, nome, 'sem canvas sob Node'); return; }
+    O.reset(42);
+    for (var i = 0; i < 20; i++) R.draw(16);
+    var depois = O.rng.f();
+    var esperado = O.makeRng(42).f();
+    t(10, nome, depois === esperado,
+      '20 draws · primeiro f() pós-draw = ' + depois.toFixed(12) + ' · esperado = ' + esperado.toFixed(12));
+  })();
+
+  // ---- 11. [browser] snapshot-diff --------------------------------------
+  (function () {
+    var nome = '[browser] Snapshot-diff: mesmo estado desenha igual; tile alterado desenha diferente';
+    if (!temCanvas) { skip(11, nome, 'sem canvas sob Node'); return; }
+    O.reset(42);
+    var cv = document.getElementById('oikos');
+    R.draw(16); var a = cv.toDataURL();
+    R.draw(16); var b = cv.toDataURL();
+    O.state.tiles.terrain[28 * M + 28] = 7;
+    O.state.tiles.building[28 * M + 28] = 1;
+    R.draw(16); var c = cv.toDataURL();
+    t(11, nome, a === b && a !== c,
+      'estável=' + (a === b) + ' · sensível a mudança de tile=' + (a !== c));
+  })();
+
+  // ---- 12. [browser] smoke visual < 17 ms/frame -------------------------
+  (function () {
+    var nome = '[browser] Smoke visual: 30 frames com a ilha da seed 42, média abaixo de 17 ms/frame';
+    if (!temCanvas) { skip(12, nome, 'sem canvas sob Node'); return; }
+    O.reset(42);
+    if (O.Worldgen) O.Worldgen.generate();
+    R.draw(16);
+    var t0 = performance.now();
+    for (var i = 0; i < 30; i++) R.draw(16);
+    var media = (performance.now() - t0) / 30;
+    t(12, nome, media < 17, media.toFixed(2) + ' ms/frame');
+  })();
+
+  render(res, 'saida', 'resumo', 'OIKOS S3');
+
+  function render(lista, elTab, elRes, tag) {
+    lista.sort(function (a, b) { return a.id - b.id; });
+    var linhas = lista.map(function (r) {
+      var cls = r.skip ? 'skip' : (r.ok ? 'pass' : 'fail');
+      var txt = r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL');
+      return '<tr><td>' + r.id + '</td><td>' + r.nome + '</td><td class="' + cls + '">' + txt +
+        '</td><td class="det">' + r.det + '</td></tr>';
+    }).join('');
+    document.getElementById(elTab).innerHTML =
+      '<table><tr><th>#</th><th>Critério</th><th>Status</th><th>Detalhe</th></tr>' + linhas + '</table>';
+
+    var exec = lista.filter(function (r) { return !r.skip; });
+    var pass = exec.filter(function (r) { return r.ok; }).length;
+    var nSkip = lista.length - exec.length;
+    var resumo = pass + '/' + exec.length + ' PASS (+' + nSkip + ' SKIP [browser])';
+    document.getElementById(elRes).innerHTML =
+      '<b class="' + (pass === exec.length ? 'pass' : 'fail') + '">' + resumo + '</b>' +
+      (nSkip ? '<div class="det">Os critérios [browser] exigem canvas real; abra este arquivo no navegador para o aceite visual.</div>' : '');
+
+    console.table(lista.map(function (r) {
+      return { '#': r.id, criterio: r.nome, status: r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL'), detalhe: r.det };
+    }));
+    console.log(tag + ' harness: ' + resumo);
+  }
+})();
+</script>
+</body>
+</html>
