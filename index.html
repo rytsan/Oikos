@@ -1752,6 +1752,528 @@
 /* ===== OIKOS S7 SIM — FIM ===== */
 </script>
 <script>
+/* ===== OIKOS S8 ERAS — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  // LACUNA: a carta não fixa a superfície de export do S8 (mesma situação do
+  // S7). Exporto o catálogo, a consulta de opções da era, adoção, reforma e o
+  // custo ao vivo — o mínimo que a S12 precisa para o painel Constituição e
+  // que o harness precisa para adotar e reformar sem UI.
+
+  var ERAS = [
+    { id: 0, nome: 'Pedra Lascada',   prosa: 'A Casa aprende o gume da pedra.' },
+    { id: 1, nome: 'Semeadura',       prosa: 'A Casa confia à terra o que comerá depois.' },
+    { id: 2, nome: 'Primeiro Metal',  prosa: 'A Casa descobre que a rocha escorre.' },
+    { id: 3, nome: 'Engrenagens',     prosa: 'A Casa multiplica os próprios braços.' },
+    { id: 4, nome: 'Vapor',           prosa: 'A Casa queima o que guardou por eras.' },
+    { id: 5, nome: 'Contemporânea',   prosa: 'A Casa se olha e decide o que será.' }
+  ];
+
+  // DECISÃO: o limiar do S7 é fixo em 100 e o evento era:ready é chaveado pela
+  // era vigente (D41). Para a era seguinte não abrir no mesmo instante, a
+  // adoção CONSOME 100 de conhecimento. É a solução mais simples que faz o
+  // limiar fixo do S7 valer era após era, sem tocar em módulo alheio.
+  var CUSTO_CONHECIMENTO = 100;
+
+  // Instituições: pares por era, conforme a tabela da seção 6.
+  // mods[] empurra contra os NOVE alvos da D39, e só contra eles.
+  var INSTITUTIONS = [
+    { id: 'inst.terraComum', era: 0, titulo: 'Terra comum',
+      prosa: 'O chão não tem dono: quem planta, colhe, e a Casa se espalha sozinha.',
+      pros: 'fronteira orgânica grátis', cons: 'zoneamento fora de controle',
+      custoReformaBase: 60, gates: [],
+      mods: [{ target: 'growth', kind: 'mult', value: 1.10 },
+             { target: 'tension', kind: 'add', value: -0.10 }] },
+    { id: 'inst.chefiaAloca', era: 0, titulo: 'Chefia aloca',
+      prosa: 'Uma voz decide onde cada um levanta sua casa.',
+      pros: 'trabalho dirigido, mais braços por obra', cons: 'a obediência cobra seu preço',
+      custoReformaBase: 90, gates: ['inst.trabalhoPactuado', 'inst.guildas'],
+      mods: [{ target: 'jobs', kind: 'mult', value: 1.25 },
+             { target: 'tension', kind: 'add', value: 0.15 }] },
+
+    { id: 'inst.celeiroColetivo', era: 1, titulo: 'Celeiro coletivo',
+      prosa: 'O que sobra de um é o que salva o outro no inverno.',
+      pros: 'resistência à fome', cons: 'sem comércio interno',
+      custoReformaBase: 80, gates: ['inst.mercadoLivre'],
+      // fn(snapshot): quanto maior a população, mais o celeiro rende — a
+      // vantagem se dimensiona sobre o mundo real (D34).
+      mods: [{ target: 'foodUse', kind: 'mult',
+               fn: function (s) { var p = (s && s.pop) || 0; return p > 0 ? Math.max(0.75, 0.95 - p / 400) : 0.95; } }] },
+    { id: 'inst.excedentePrivado', era: 1, titulo: 'Excedente privado',
+      prosa: 'Cada casa guarda o seu, e o seu vira troca.',
+      pros: 'extração e estoque crescem', cons: 'a fome bate em quem não guardou',
+      custoReformaBase: 80, gates: ['inst.celeiroColetivo'],
+      mods: [{ target: 'woodProd', kind: 'mult', value: 1.20 },
+             { target: 'stoneProd', kind: 'mult', value: 1.20 },
+             { target: 'tension', kind: 'add', value: 0.10 }] },
+
+    { id: 'inst.corveia', era: 2, titulo: 'Corveia',
+      prosa: 'A obra é dever, e o dever não se recusa.',
+      pros: 'construção dobrada e sem custo', cons: 'tensão contínua',
+      custoReformaBase: 140, gates: ['inst.jornadaRegulada'],
+      mods: [{ target: 'jobs', kind: 'mult', value: 2.0 },
+             { target: 'tension', kind: 'add', value: 0.20 }] },
+    { id: 'inst.trabalhoPactuado', era: 2, titulo: 'Trabalho pactuado',
+      prosa: 'O que se faz junto, combina-se antes.',
+      pros: 'a Casa cresce em paz', cons: 'nada sai depressa',
+      custoReformaBase: 110, gates: [],
+      mods: [{ target: 'tension', kind: 'add', value: -0.15 },
+             { target: 'growth', kind: 'mult', value: 1.08 }] },
+
+    { id: 'inst.guildas', era: 3, titulo: 'Guildas',
+      prosa: 'O ofício se guarda, se ensina e se protege.',
+      pros: 'qualidade e estabilidade', cons: 'crescimento lento',
+      custoReformaBase: 160, gates: ['inst.mercadoLivre'],
+      mods: [{ target: 'knowledge', kind: 'mult', value: 1.30 },
+             { target: 'growth', kind: 'mult', value: 0.90 }] },
+    { id: 'inst.mercadoLivre', era: 3, titulo: 'Mercado livre',
+      prosa: 'Quem quiser, oferece; quem puder, paga.',
+      pros: 'a Casa incha depressa', cons: 'e range nas juntas',
+      custoReformaBase: 160, gates: ['inst.guildas'],
+      mods: [{ target: 'growth', kind: 'mult', value: 1.20 },
+             { target: 'tension', kind: 'add', value: 0.15 }] },
+
+    { id: 'inst.jornadaLonga', era: 4, titulo: 'Jornada longa',
+      prosa: 'Enquanto houver luz, e depois dela também.',
+      pros: 'produção em alta', cons: 'a saúde cai, as revoltas sobem',
+      custoReformaBase: 200, gates: [],
+      mods: [{ target: 'foodProd', kind: 'mult', value: 1.30 },
+             { target: 'stoneProd', kind: 'mult', value: 1.30 },
+             { target: 'tension', kind: 'add', value: 0.30 }] },
+    { id: 'inst.jornadaRegulada', era: 4, titulo: 'Jornada regulada',
+      prosa: 'O corpo também é Casa, e pede seu descanso.',
+      pros: 'a Casa respira', cons: 'e produz menos',
+      custoReformaBase: 180, gates: [],
+      mods: [{ target: 'tension', kind: 'add', value: -0.20 },
+             { target: 'foodProd', kind: 'mult', value: 0.90 }] },
+
+    { id: 'inst.constituicaoEcologica', era: 5, titulo: 'Constituição ecológica',
+      prosa: 'A Casa escreve que a Casa não se vende.',
+      pros: 'a Casa regenera', cons: 'a fartura fica para depois',
+      custoReformaBase: 240, gates: ['inst.cartaExtracao'],
+      mods: [{ target: 'foodProd', kind: 'mult', value: 0.90 },
+             { target: 'tension', kind: 'add', value: -0.20 }] },
+    { id: 'inst.cartaExtracao', era: 5, titulo: 'Carta da extração',
+      prosa: 'Tudo que a Casa guarda, a Casa pode gastar.',
+      pros: 'produção livre', cons: 'colapso possível',
+      custoReformaBase: 240, gates: ['inst.constituicaoEcologica'],
+      mods: [{ target: 'woodProd', kind: 'mult', value: 1.50 },
+             { target: 'stoneProd', kind: 'mult', value: 1.50 },
+             { target: 'tension', kind: 'add', value: 0.25 }] }
+  ];
+
+  var PORID = {};
+  for (var k = 0; k < INSTITUTIONS.length; k++) PORID[INSTITUTIONS[k].id] = INSTITUTIONS[k];
+
+  // Identidade do estado: reset() e load() reatribuem o objeto. É aqui que o
+  // S8 cumpre a D28 — depois de um load(), as instituições vivem em
+  // state.institutions mas os mods NÃO existem mais no motor (D37 zerou a
+  // closure do Mods). Re-registrar é obrigação nossa, e re-push por id
+  // substitui no lugar (D28), então é idempotente.
+  var ultimoState = null;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+    reRegistrar();
+  }
+
+  function reRegistrar() {
+    var vig = O.state.institutions || [];
+    for (var i = 0; i < vig.length; i++) {
+      var inst = PORID[vig[i] && vig[i].id];
+      if (inst) empurrarMods(inst);
+    }
+    return vig.length;
+  }
+
+  function empurrarMods(inst) {
+    for (var i = 0; i < inst.mods.length; i++) {
+      var m = inst.mods[i];
+      O.Mods.push({
+        id: inst.id + '#' + i, source: inst.id, target: m.target,
+        kind: m.kind, value: m.value, fn: m.fn
+      });
+    }
+  }
+
+  function vigentes() {
+    sincronizar();
+    return (O.state.institutions || []).slice();
+  }
+  function jaAdotada(id) {
+    var v = O.state.institutions || [];
+    for (var i = 0; i < v.length; i++) if (v[i] && v[i].id === id) return true;
+    return false;
+  }
+  // Gate: instituição adotada bloqueia as que ela lista em gates[].
+  function bloqueada(id) {
+    var v = O.state.institutions || [];
+    for (var i = 0; i < v.length; i++) {
+      var inst = PORID[v[i] && v[i].id];
+      if (inst && inst.gates.indexOf(id) >= 0) return inst.id;
+    }
+    return null;
+  }
+
+  // opcoes(era?) — o que ainda pode ser adotado naquela era.
+  function opcoes(era) {
+    sincronizar();
+    var e = (era === undefined) ? O.state.era : era;
+    var out = [];
+    for (var i = 0; i < INSTITUTIONS.length; i++) {
+      var inst = INSTITUTIONS[i];
+      if (inst.era !== e) continue;
+      if (jaAdotada(inst.id) || bloqueada(inst.id)) continue;
+      out.push(inst);
+    }
+    return out;
+  }
+
+  // Custo de reforma (seção 7): base × (1+idade/fator) × (1−legit/100) × K(k)/K(0)
+  var FATOR_IDADE = 20;
+  function custoReforma(id) {
+    sincronizar();
+    var inst = PORID[id];
+    if (!inst) return Infinity;
+    var v = O.state.institutions || [], adotadaEm = null;
+    for (var i = 0; i < v.length; i++) if (v[i] && v[i].id === id) adotadaEm = v[i].yearAdopted;
+    if (adotadaEm === null) return Infinity;
+    var idade = Math.max(0, O.state.year - adotadaEm);
+    var legit = Math.max(0, Math.min(100, O.state.meters.legitimacy));
+    var k = O.state.pendulums.main ? O.state.pendulums.main.k : 0;
+    var rigidez = O.Elliptic.K(k) / O.Elliptic.K(0);      // teto ~3,59 (D19)
+    return inst.custoReformaBase * (1 + idade / FATOR_IDADE) * (1 - legit / 100) * rigidez;
+  }
+
+  // A carta de decisão é MATERIAL: dimensionada por state.geo, que a D43
+  // mantém vivo. A Era 4 tem de decidir sobre a floresta que existe agora.
+  function contexto() {
+    var g = O.state.geo || {}, st = O.state;
+    return {
+      forestTiles: g.forestTiles || 0, fertileTiles: g.fertileTiles || 0,
+      landTiles: g.landTiles || 0, hasRiver: !!g.hasRiver,
+      riverLength: g.riverLength || 0, oreVeins: g.oreVeins || 0,
+      pop: st.sim.pop, ano: st.year, era: st.era
+    };
+  }
+
+  function abrirDecisao() {
+    var ops = opcoes(O.state.era);
+    // EMENDA v1.14 D45: sem opção não há decisão a tomar — não pausa e não
+    // abre modal. Acontece depois da Era 5 e quando as duas leis da era
+    // vigente já foram adotadas; pausar ali congelava a partida num modal
+    // sem nada para escolher.
+    if (!ops.length) return ops;
+    // EMENDA v1.14 D46: o S8 PAUSA e NÃO retoma. Quem devolve o loop ao jogo
+    // é a S12, ao fechar o modal. Enquanto ela não existe, a partida fica
+    // pausada depois da transição de era — comportamento conhecido.
+    O.loop.pause();                       // 5.7: só o loop muta state.paused
+    O.bus.emit('decision:open', { era: O.state.era, opcoes: ops, contexto: contexto() });
+    return ops;
+  }
+
+  // adopt(id) — adota, empurra os mods, registra o ATO e avança a era.
+  function adopt(id) {
+    sincronizar();
+    var inst = PORID[id];
+    if (!inst) { console.error('[OIKOS Eras] instituição desconhecida:', id); return null; }
+    if (inst.era !== O.state.era) { console.error('[OIKOS Eras] fora da era vigente:', id); return null; }
+    if (jaAdotada(id)) { console.error('[OIKOS Eras] já adotada:', id); return null; }
+    var porQuem = bloqueada(id);
+    if (porQuem) { console.error('[OIKOS Eras] bloqueada por ' + porQuem + ':', id); return null; }
+
+    O.state.institutions.push({ id: inst.id, yearAdopted: O.state.year });
+    empurrarMods(inst);
+
+    // D23: o ATO é a entrada que as consequências futuras vão citar (D22).
+    var ato = O.Chron.log({
+      type: 'ato', titulo: inst.titulo, prosa: inst.prosa,
+      efeitoMedido: { era: O.state.era, pros: inst.pros, cons: inst.cons }
+    });
+    O.bus.emit('inst:adopted', { id: inst.id, era: O.state.era, ato: ato && ato.id });
+
+    // DECISÃO: a adoção CONSOME conhecimento (ver CUSTO_CONHECIMENTO). Sem
+    // isso o era:ready da era seguinte dispararia no mesmo instante, porque o
+    // limiar do S7 é fixo e o conhecimento já está acima dele.
+    O.state.meters.knowledge = Math.max(0, O.state.meters.knowledge - CUSTO_CONHECIMENTO);
+
+    var de = O.state.era;
+    if (de < ERAS.length - 1) O.state.era = de + 1;
+    O.bus.emit('decision:closed', { era: de, adotada: inst.id });
+    O.bus.emit('era:advanced', { de: de, para: O.state.era });
+    return inst;
+  }
+
+  // reform(idVelho, idNovo) — paga legitimidade pelo custo e troca.
+  function reform(idVelho, idNovo) {
+    sincronizar();
+    var velho = PORID[idVelho], novo = PORID[idNovo];
+    if (!velho || !novo) { console.error('[OIKOS Eras] reforma com id desconhecido'); return null; }
+    if (!jaAdotada(idVelho)) { console.error('[OIKOS Eras] não vigente:', idVelho); return null; }
+    if (jaAdotada(idNovo)) { console.error('[OIKOS Eras] já vigente:', idNovo); return null; }
+    var custo = custoReforma(idVelho);
+    if (!isFinite(custo)) return null;
+    if (O.state.meters.legitimacy < custo / 10) {
+      console.error('[OIKOS Eras] legitimidade insuficiente para reformar', idVelho);
+      return null;
+    }
+
+    O.Mods.removeBySource(idVelho);
+    var v = O.state.institutions;
+    for (var i = v.length - 1; i >= 0; i--) if (v[i] && v[i].id === idVelho) v.splice(i, 1);
+
+    v.push({ id: novo.id, yearAdopted: O.state.year });
+    empurrarMods(novo);
+    O.state.meters.legitimacy = Math.max(0, O.state.meters.legitimacy - custo / 10);
+
+    O.Chron.log({
+      type: 'ato', titulo: 'Reforma: ' + velho.titulo + ' dá lugar a ' + novo.titulo,
+      prosa: 'A Casa desfaz o que jurou, e o preço da palavra rompida é a confiança.',
+      efeitoMedido: { custo: Math.round(custo * 100) / 100, idade: O.state.year }
+    });
+    O.bus.emit('inst:reformed', { de: idVelho, para: idNovo, custo: custo });
+    return novo;
+  }
+
+  // A transição nasce do era:ready do S7. Escuta pelo bus, nunca por update().
+  O.bus.on('era:ready', function () {
+    sincronizar();
+    abrirDecisao();
+  });
+
+  // Ciclo de vida leve. O update roda sincronizar() a cada tick — e isso NÃO é
+  // luxo: depois de um load() a closure do Mods está zerada (D37) e ninguém
+  // mais chamaria o S8 para re-registrar, porque Mods.get não nos aciona. Com
+  // o update, o primeiro tick após o load repõe os modificadores. O custo é
+  // uma comparação de referência por ano.
+  O.use('Eras', { init: sincronizar, update: sincronizar });
+
+  O.Eras = {
+    ERAS: ERAS, INSTITUTIONS: INSTITUTIONS,
+    opcoes: opcoes, adopt: adopt, reform: reform,
+    custoReforma: custoReforma, vigentes: vigentes
+  };
+})(window);
+/* ===== OIKOS S8 ERAS — FIM ===== */
+</script>
+<script>
+/* ===== OIKOS S9 BORDER — INÍCIO ===== */
+(function (global) {
+  'use strict';
+  var O = global.OIKOS;
+
+  var OCEANO = 0, DOCE = 1, FERTIL = 4, FLORESTA = 5, PEDRA = 6, MONTANHA = 7;
+
+  // LACUNA: a carta não fixa a superfície de export do S9. Exporto a consulta
+  // de fronteira, o passo orgânico, o decreto com seu custo e o imposto — o
+  // mínimo que a S12 precisa para overlay e decreto, e o harness para provar
+  // o aceite sem UI.
+
+  // DECISÃO: tiles.owner usa 1 = DENTRO da fronteira e 0 = fora. O S3 já
+  // desenha contorno em todo tile com owner !== 0 (vi o bloco do Render no
+  // runtime), então qualquer outra semântica faria o mapa desenhar errado sem
+  // ninguém reclamar. Valores >1 ficam livres para donos futuros.
+  var DENTRO = 1;
+
+  var CUSTO_BASE_DECRETO = 12;      // ouro no tile adjacente à fronteira
+  var CUSTO_POR_DISTANCIA = 0.8;    // cresce com a distância ao centro
+  var LEGIT_POR_DECRETO = 0.5;
+  var RAIO_IMPOSTO = 12;            // c de imposto × 1/(1+dist/c)
+
+  var ultimoState = null;
+  function sincronizar() {
+    if (O.state === ultimoState) return;
+    ultimoState = O.state;
+  }
+
+  function dentroMapa(x, y) {
+    var M = O.consts.MAP;
+    return x >= 0 && y >= 0 && x < M && y < M;
+  }
+
+  function isInside(x, y) {
+    sincronizar();
+    if (!dentroMapa(x, y) || Math.floor(x) !== x || Math.floor(y) !== y) return false;
+    return O.state.tiles.owner[y * O.consts.MAP + x] !== 0;
+  }
+
+  // Centro da Casa: centroide dos tiles com dono; sem fronteira ainda, o
+  // centroide dos edifícios; sem nada, o meio do mapa.
+  function centro() {
+    sincronizar();
+    var M = O.consts.MAP, N = M * M, OWN = O.state.tiles.owner, B = O.state.tiles.building;
+    var sx = 0, sy = 0, n = 0, i, x, y;
+    for (i = 0; i < N; i++) if (OWN[i]) { x = i % M; y = (i - x) / M; sx += x; sy += y; n++; }
+    if (!n) for (i = 0; i < N; i++) if (B[i]) { x = i % M; y = (i - x) / M; sx += x; sy += y; n++; }
+    if (!n) return { x: (M - 1) / 2, y: (M - 1) / 2 };
+    return { x: sx / n, y: sy / n };
+  }
+
+  function distDoCentro(x, y) {
+    var c = centro(), dx = x - c.x, dy = y - c.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Atratividade: água e solo fértil puxam a Casa; montanha repele.
+  function atratividade(i) {
+    var M = O.consts.MAP, T = O.state.tiles.terrain;
+    var x = i % M, y = (i - x) / M, s = 1;
+    if (T[i] === FERTIL) s += 3;
+    else if (T[i] === FLORESTA) s += 1.5;
+    else if (T[i] === MONTANHA) s -= 1.5;
+    else if (T[i] === PEDRA) s += 0.5;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = x + dx, ny = y + dy;
+      if (!dentroMapa(nx, ny)) continue;
+      var t = T[ny * M + nx];
+      if (t === DOCE) s += 2;
+      else if (t === OCEANO) s += 0.75;
+    }
+    return s - distDoCentro(x, y) * 0.05;
+  }
+
+  // DECISÃO: a instituição vigente escolhe o modo. 'inst.terraComum' libera a
+  // fronteira orgânica (grátis, sem controle); 'inst.chefiaAloca' a trava e só
+  // o decreto expande. Sem instituição adotada, o padrão é orgânico — a Casa
+  // do paleolítico se espalha sozinha. A S8 roda em paralelo nesta rodada, e
+  // por isso leio state.institutions em vez de depender do código dela.
+  function modo() {
+    var v = O.state.institutions || [];
+    for (var i = 0; i < v.length; i++) {
+      if (v[i] && v[i].id === 'inst.chefiaAloca') return 'decreto';
+      if (v[i] && v[i].id === 'inst.terraComum') return 'organica';
+    }
+    return 'organica';
+  }
+
+  // Raio orgânico = f(pop, contentamento). Contentamento é o inverso da
+  // tensão que o S7 calcula.
+  function raioOrganico() {
+    var st = O.state;
+    var contentamento = Math.max(0, 1 - (st.sim.tension || 0));
+    return Math.sqrt(Math.max(0, st.sim.pop)) * (0.6 + 0.6 * contentamento);
+  }
+
+  // expandir() — um passo orgânico. Toma os tiles de terra na borda da
+  // fronteira, ordenados por atratividade, dentro do raio. Determinístico:
+  // a ordenação decide, sem sorteio.
+  function expandir() {
+    sincronizar();
+    if (modo() !== 'organica') return 0;
+    var M = O.consts.MAP, N = M * M;
+    var T = O.state.tiles.terrain, OWN = O.state.tiles.owner;
+    var raio = raioOrganico(), c = centro(), i, x, y;
+
+    var semente = 0;
+    for (i = 0; i < N; i++) if (OWN[i]) { semente = 1; break; }
+    var cand = [];
+    for (i = 0; i < N; i++) {
+      if (OWN[i] || T[i] < 2) continue;                 // já é nosso, ou é água
+      x = i % M; y = (i - x) / M;
+      if (distDoCentro(x, y) > raio) continue;
+      if (semente && !vizinhoDaFronteira(x, y)) continue;  // contiguidade
+      cand.push(i);
+    }
+    if (!cand.length) return 0;
+    cand.sort(function (a, b) { return atratividade(b) - atratividade(a) || a - b; });
+
+    var quantos = Math.min(cand.length, Math.max(1, Math.floor(raio / 3)));
+    for (i = 0; i < quantos; i++) OWN[cand[i]] = DENTRO;
+    O.bus.emit('border:changed', { ganhos: quantos, modo: 'organica', total: contarDonos() });
+    return quantos;
+  }
+
+  function vizinhoDaFronteira(x, y) {
+    var M = O.consts.MAP, OWN = O.state.tiles.owner;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      var nx = x + dx, ny = y + dy;
+      if (!dentroMapa(nx, ny)) continue;
+      if (OWN[ny * M + nx]) return true;
+    }
+    return false;
+  }
+
+  function contarDonos() {
+    var OWN = O.state.tiles.owner, n = 0;
+    for (var i = 0; i < OWN.length; i++) if (OWN[i]) n++;
+    return n;
+  }
+
+  // custoDecreto — cresce com a distância ao centro; montanha custa o dobro.
+  function custoDecreto(x, y) {
+    sincronizar();
+    if (!dentroMapa(x, y)) return Infinity;
+    var M = O.consts.MAP, i = y * M + x, T = O.state.tiles.terrain;
+    if (T[i] < 2) return Infinity;                       // água não se decreta
+    if (O.state.tiles.owner[i]) return 0;                // já é nosso
+    var custo = CUSTO_BASE_DECRETO + distDoCentro(x, y) * CUSTO_POR_DISTANCIA;
+    if (T[i] === MONTANHA) custo *= 2;
+    return custo;
+  }
+
+  // decretar(x,y) — paga ouro e legitimidade. Recusa vira ui:toast.
+  function decretar(x, y) {
+    sincronizar();
+    var custo = custoDecreto(x, y);
+    if (!isFinite(custo)) {
+      O.bus.emit('ui:toast', { tipo: 'recusa', texto: 'A Casa não se estende sobre a água.' });
+      return false;
+    }
+    var M = O.consts.MAP, i = y * M + x;
+    if (O.state.tiles.owner[i]) return true;
+    if (O.state.res.gold < custo) {
+      O.bus.emit('ui:toast', { tipo: 'recusa', texto: 'Não há ouro para estender a fronteira até ali.' });
+      return false;
+    }
+    O.state.res.gold -= custo;
+    O.state.meters.legitimacy = Math.max(0, O.state.meters.legitimacy - LEGIT_POR_DECRETO);
+    O.state.tiles.owner[i] = DENTRO;
+    O.bus.emit('border:changed', { ganhos: 1, modo: 'decreto', total: contarDonos(), custo: custo });
+    return true;
+  }
+
+  // imposto() — tiles distantes rendem menos: soma de 1/(1+dist/c).
+  // A tensão de governar longe NÃO é escrita no estado: vira um mod contra o
+  // alvo 'tension' (D39), que é por onde o S7 lê todo número.
+  function imposto() {
+    sincronizar();
+    var M = O.consts.MAP, N = M * M, OWN = O.state.tiles.owner;
+    var total = 0, n = 0, distMedia = 0, i, x, y;
+    for (i = 0; i < N; i++) {
+      if (!OWN[i]) continue;
+      x = i % M; y = (i - x) / M;
+      var d = distDoCentro(x, y);
+      total += 1 / (1 + d / RAIO_IMPOSTO);
+      distMedia += d; n++;
+    }
+    if (n) distMedia /= n;
+    var perda = n ? (n - total) / n : 0;                 // quanto se perde na distância
+    O.Mods.push({
+      id: 'border.tensao', source: 'border', target: 'tension',
+      kind: 'add', value: perda * 0.5
+    });
+    return { rendimento: total, tiles: n, distMedia: distMedia, perda: perda };
+  }
+
+  // Um passo por ano: expande organicamente e reavalia o imposto.
+  function passo() {
+    sincronizar();
+    expandir();
+    imposto();
+  }
+
+  O.use('Border', { update: passo });
+
+  O.Border = {
+    isInside: isInside, expandir: expandir, decretar: decretar,
+    custoDecreto: custoDecreto, imposto: imposto, centro: centro
+  };
+})(window);
+/* ===== OIKOS S9 BORDER — FIM ===== */
+</script>
+<script>
 // Arranque mínimo: dimensiona o canvas à janela, gera a ilha e sobe o loop.
 // Guardado para o NAVEGADOR: sob Node (smoke do integrador) não há canvas nem
 // addEventListener, e start() agendaria rAF para sempre, travando o processo.

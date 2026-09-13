@@ -72,4 +72,26 @@ console.log('pop apos 40 anos:', OIKOS.state.sim.pop.toFixed(2),
 assert.ok(OIKOS.state.sim.pop > 1, 'populacao nao cresceu');
 assert.ok(OIKOS.state.sim.housing > 0, 'moradia zerada');
 
+// S8 integrado: catalogo, par da era e adocao empurrando mods de verdade.
+assert.ok(OIKOS.Eras && Array.isArray(OIKOS.Eras.ERAS), 'Eras ausente');
+assert.strictEqual(OIKOS.Eras.ERAS.length, 6, 'seis eras');
+assert.strictEqual(OIKOS.Eras.INSTITUTIONS.length, 12, 'doze instituicoes');
+const opsEra0 = OIKOS.Eras.opcoes(0);
+console.log('opcoes da era 0:', opsEra0.map(i => i.id).join(' | '));
+assert.strictEqual(opsEra0.length, 2, 'par institucional da era 0');
+const growthAntes = OIKOS.Mods.get('growth', { growth: 1 });
+OIKOS.Eras.adopt('inst.terraComum');
+const growthDepois = OIKOS.Mods.get('growth', { growth: 1 });
+console.log('growth apos adotar Terra comum:', growthAntes.toFixed(3), '->', growthDepois.toFixed(3));
+assert.ok(growthDepois > growthAntes, 'instituicao nao empurrou mod');
+
+// S9 integrado: a fronteira nasce e o S7 passa a respeita-la (D44).
+assert.ok(OIKOS.Border && typeof OIKOS.Border.expandir === 'function', 'Border ausente');
+let ganhos = 0;
+for (let i = 0; i < 15; i++) ganhos += OIKOS.Border.expandir();
+console.log('fronteira apos 15 passos:', ganhos, 'tiles · centro', JSON.stringify(OIKOS.Border.centro()));
+assert.ok(ganhos > 0, 'fronteira nao expandiu');
+const dentroFront = OIKOS.Border.isInside(Math.round(OIKOS.Border.centro().x), Math.round(OIKOS.Border.centro().y));
+console.log('centro dentro da fronteira:', dentroFront);
+
 console.log('SMOKE OK');
