@@ -297,15 +297,62 @@ você quase não veria, e teria pago o re-baseline antes de ter como julgar.
 
 ---
 
-## 5. Decisões abertas
+## 5. Decisões tomadas
 
-1. **Ordem bloco A → bloco B confirmada?**
-2. **`ALTURA_PREDIO = 24` vira `S = 35,777`?** É correção de defeito geométrico,
-   não preferência — mas muda o visual de tudo que tem altura, e o snapshot-diff
-   do S3 re-baselina.
-3. **A fronteira S3 × S13 está certa?** A S13 põe *atmosfera* (limbo, nuvens
+1. **Bloco A antes do bloco B.** Render primeiro; topologia depois, aceitando o
+   re-baseline das seeds quando chegar a hora.
+2. **`ALTURA_PREDIO = 24` vira `S = 35,777088`.** Correção do defeito geométrico
+   de F2. Muda o visual de tudo que tem altura e re-baselina o snapshot-diff
+   do S3 — que é consequência esperada, não efeito colateral.
+3. **Duas partes por rodada**, agrupando as que compartilham fundamento.
+
+## 6. Cronograma do bloco A
+
+Agrupado por fundamento comum, duas partes por rodada:
+
+| Rodada | Partes | Fundamento comum |
+|---|---|---|
+| 7A.1 | 1 (cache) + 2 (tile e mosaico) | F1 · destrava o orçamento de frame |
+| 7A.2 | 11 (edifícios) + 12 (ruínas) | F2 · ambas são caixa de mundo projetada; aqui entra a correção de `ALTURA_PREDIO` |
+| 7A.3 | 6 (árvores) + 7 (montanha e pedra) | F1 + F2 · copa é elipse elevada, montanha é cone |
+| 7A.4 | 8 (minas) + 9 (caça e peixe) | F1 · elipses pequenas; e a armadilha do período `4K(k)` no cardume |
+| 7A.5 | 13 (fronteira) + 14 (HUD) | contorno de região; interface — **ver seção 7** |
+
+## 7. HUD e interface — em discussão
+
+**Não é parte fechada ainda.** O diagnóstico está feito; a direção precisa de
+decisão do dono.
+
+**O que é hoje, verificado:** `ui-monospace` em toda a interface, **zero Google
+Fonts** — a carta permite (seção 3) e pede "fonte com caráter". A topbar são
+sete `<span>` idênticos: "ano 40" tem o mesmo peso visual de "comida 37". Os
+painéis são `elPainel.textContent = linhas.join('\n')`, dump de texto sem um
+elemento, impossível de estilizar item a item.
+
+**A tensão de design que precisa ser resolvida:** a **D3** diz que estabilidade
+nunca é número, que não há barra de felicidade, e que *o mapa narra*. Mas a
+topbar é uma fileira de contadores. Recurso é concreto — ao contrário de
+estabilidade —, então não é violação direta. Mas o **tom** destoa: o jogo narra
+no mapa e no registro, e a interface fala como planilha.
+
+Daí a pergunta que decide o resto: **a HUD informa ou narra?** "comida 12" ou "o
+celeiro esvazia"? Valor absoluto ou tendência? A resposta muda tudo que vier
+depois, e é decisão de dono, não de implementação.
+
+**Candidatos, se a direção for "narrar":** tipografia com duas vozes — serifada
+para prosa (crônica, modal de decisão), condensada para número; recurso com
+tendência em vez de valor cru, mudando de cor na escassez; painéis como
+elementos estruturados, crônica lendo como registro e constituição como carta de
+leis; paleta da interface derivada das cores do próprio terreno, dessaturadas;
+e **prédio fantasma no tile sob o cursor** ao selecionar ferramenta — que hoje
+não existe e é o feedback que mais falta ao jogar.
+
+---
+
+## 8. Decisões ainda abertas
+
+1. **A fronteira S3 × S13 está certa?** A S13 põe *atmosfera* (limbo, nuvens
    Lissajous, dia/noite); o bloco A melhora *o desenho do mundo*.
-4. **No bloco B, a D30 é superada** (fração de floresta emerge da umidade) ou o
+2. **No bloco B, a D30 é superada** (fração de floresta emerge da umidade) ou o
    aceite vira faixa mais larga mantendo o sorteio?
-5. **Uma parte por rodada, ou o bloco A inteiro numa rodada?** Parte a parte
-   audita melhor; o bloco inteiro integra menos vezes.
+3. **A HUD informa ou narra?** (seção 7)
