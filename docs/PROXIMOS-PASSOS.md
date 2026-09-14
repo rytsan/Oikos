@@ -312,47 +312,88 @@ Agrupado por fundamento comum, duas partes por rodada:
 
 | Rodada | Partes | Fundamento comum |
 |---|---|---|
-| 7A.1 | 1 (cache) + 2 (tile e mosaico) | F1 · destrava o orçamento de frame |
+| 7A.1 | 1 (cache) + 2 (tile e mosaico) + **14a** (tipografia e estrutura da HUD) | F1 · destrava o orçamento de frame; a 14a não depende de geometria e sobe junto |
 | 7A.2 | 11 (edifícios) + 12 (ruínas) | F2 · ambas são caixa de mundo projetada; aqui entra a correção de `ALTURA_PREDIO` |
 | 7A.3 | 6 (árvores) + 7 (montanha e pedra) | F1 + F2 · copa é elipse elevada, montanha é cone |
 | 7A.4 | 8 (minas) + 9 (caça e peixe) | F1 · elipses pequenas; e a armadilha do período `4K(k)` no cardume |
-| 7A.5 | 13 (fronteira) + 14 (HUD) | contorno de região; interface — **ver seção 7** |
+| 7A.5 | 13 (fronteira) + 14b (HUD: fantasma e paleta) | contorno de região; o que depende de geometria pronta |
 
-## 7. HUD e interface — em discussão
+A HUD foi **quebrada em duas** porque só parte dela depende de geometria:
+**14a** (tipografia, hierarquia, painéis estruturados, retirada do contador de
+decadência) não depende de nada e sobe junto da 7A.1; **14b** (prédio fantasma
+no cursor, paleta derivada do terreno) precisa das caixas de mundo da 7A.2.
 
-**Não é parte fechada ainda.** O diagnóstico está feito; a direção precisa de
-decisão do dono.
+## 7. HUD e interface — decidido
 
-**O que é hoje, verificado:** `ui-monospace` em toda a interface, **zero Google
-Fonts** — a carta permite (seção 3) e pede "fonte com caráter". A topbar são
-sete `<span>` idênticos: "ano 40" tem o mesmo peso visual de "comida 37". Os
-painéis são `elPainel.textContent = linhas.join('\n')`, dump de texto sem um
-elemento, impossível de estilizar item a item.
+**Direção fechada.** Virou **D51** e **D52** na carta (v1.16).
 
-**A tensão de design que precisa ser resolvida:** a **D3** diz que estabilidade
-nunca é número, que não há barra de felicidade, e que *o mapa narra*. Mas a
-topbar é uma fileira de contadores. Recurso é concreto — ao contrário de
-estabilidade —, então não é violação direta. Mas o **tom** destoa: o jogo narra
-no mapa e no registro, e a interface fala como planilha.
+### 7.1 O diagnóstico que originou as decisões
 
-Daí a pergunta que decide o resto: **a HUD informa ou narra?** "comida 12" ou "o
-celeiro esvazia"? Valor absoluto ou tendência? A resposta muda tudo que vier
-depois, e é decisão de dono, não de implementação.
+`ui-monospace` em toda a interface, **zero Google Fonts** — a carta permite
+(seção 3) e pede "fonte com caráter". A topbar são sete `<span>` idênticos:
+"ano 40" com o mesmo peso visual de "comida 37". Os painéis são
+`elPainel.textContent = linhas.join('\n')`, dump de texto sem um elemento,
+impossível de estilizar item a item.
 
-**Candidatos, se a direção for "narrar":** tipografia com duas vozes — serifada
-para prosa (crônica, modal de decisão), condensada para número; recurso com
-tendência em vez de valor cru, mudando de cor na escassez; painéis como
-elementos estruturados, crônica lendo como registro e constituição como carta de
-leis; paleta da interface derivada das cores do próprio terreno, dessaturadas;
-e **prédio fantasma no tile sob o cursor** ao selecionar ferramenta — que hoje
-não existe e é o feedback que mais falta ao jogar.
+E, acima disso, **uma violação da própria carta**: a topbar imprimia
+`'decadência ' + st.clock.decayStage`. A D3 diz que estabilidade nunca é número
+e que o mapa narra; a spec da S10 repete. Nem o implementador nem o auditor
+pegaram — o harness testa comportamento, não conformidade de design.
+
+### 7.2 A linha decidida (D51)
+
+**Recurso informa. Estabilidade narra.**
+
+Comida, madeira, pedra, população, ano e era são concretos e o jogador os gasta:
+sem o número não há decisão de construção. Ficam na tela, como número.
+
+Decadência, tensão e legitimidade são estado interno — o que a D3 protege. Saem
+da tela e voltam como sintoma: fumaça, ruína, êxodo, notícia no toast, que a S10
+já emite e a S12 já sabe receber.
+
+### 7.3 A tipografia decidida (D52)
+
+**Serifada literária**, por Google Fonts com fallback local. Monospace diz
+terminal; a Casa pede crônica.
+
+Detalhe técnico que a decisão carrega: **algarismos tabulares obrigatórios**
+(`font-variant-numeric: tabular-nums`) em todo número que muda por tick. Com
+algarismos proporcionais, o valor treme horizontalmente a cada ano — custa uma
+linha de CSS e é a diferença entre parecer acabado e parecer protótipo.
+
+### 7.4 O que cada metade carrega
+
+**14a — sobe na 7A.1, não depende de geometria alguma:**
+fonte e hierarquia tipográfica · **retirar o contador de decadência da tela**
+(D51) · painéis de Crônicas e Constituição como elementos estruturados, não
+`textContent` — crônica lendo como registro, constituição como carta de leis ·
+algarismos tabulares.
+
+**14b — sobe na 7A.5, depende das caixas de mundo da 7A.2:**
+**prédio fantasma no tile sob o cursor** ao selecionar ferramenta, verde se cabe
+e vermelho se não — hoje o S3 acende o losango mas não desenha o prédio, e é o
+feedback que mais falta ao jogar · paleta da interface derivada das cores do
+próprio terreno, dessaturadas.
 
 ---
 
 ## 8. Decisões ainda abertas
 
+Só duas, e nenhuma bloqueia a 7A.1:
+
 1. **A fronteira S3 × S13 está certa?** A S13 põe *atmosfera* (limbo, nuvens
-   Lissajous, dia/noite); o bloco A melhora *o desenho do mundo*.
+   Lissajous, dia/noite); o bloco A melhora *o desenho do mundo*. Decidir antes
+   da 7A.5, para as duas não colidirem.
 2. **No bloco B, a D30 é superada** (fração de floresta emerge da umidade) ou o
-   aceite vira faixa mais larga mantendo o sorteio?
-3. **A HUD informa ou narra?** (seção 7)
+   aceite vira faixa mais larga mantendo o sorteio? Decidir antes da 7B.
+
+## 9. Pendências de emenda acumuladas
+
+Coisas já sabidas que entram nas rodadas do bloco A, para não virarem emenda
+avulsa e re-integração dupla:
+
+- **`ALTURA_PREDIO = 24` → `S = 35,777088`** (F2) — entra na 7A.2, junto dos
+  edifícios.
+- **Contador de decadência fora da tela** (D51) — entra na 7A.1, junto da 14a.
+- **Ruínas desenhando como prédio inteiro** — pendência aberta desde a auditoria
+  do S10; entra na 7A.2, junto da Parte 12.
