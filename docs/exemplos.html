@@ -1,0 +1,2694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIKOS — Caderno de Modelos Dimétricos 2:1</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #090b12;
+    color: #e2e8f0;
+    font-family: 'Press Start 2P', monospace;
+    padding: 30px 14px 80px;
+    background-image: 
+      radial-gradient(#1e293b 1px, transparent 1px),
+      radial-gradient(#1e293b 1px, #090b12 1px);
+    background-size: 36px 36px;
+    background-position: 0 0, 18px 18px;
+  }
+
+  .header {
+    text-align: center;
+    max-width: 1060px;
+    margin: 0 auto 28px;
+  }
+
+  h1 {
+    font-size: 15px;
+    color: #cbbf87;
+    text-shadow: 3px 3px 0 #000, 0 0 16px rgba(203, 191, 135, 0.4);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  .sub {
+    font-size: 8px;
+    color: #8e855e;
+    line-height: 1.8;
+    margin-bottom: 22px;
+  }
+
+  /* NAVEGAÇÃO ENTRE ABAS */
+  .nav-tabs {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+
+  .tab-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7.5px;
+    padding: 10px 15px;
+    background: #14171c;
+    color: #8e855e;
+    border: 1px solid #4a452f;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #090d16;
+    transition: all 0.12s ease;
+  }
+
+  .tab-btn:hover {
+    color: #e8e2d4;
+    border-color: #cbbf87;
+    background: #1e293b;
+  }
+
+  .tab-btn.active {
+    color: #cbbf87;
+    border-color: #cbbf87;
+    background: #232016;
+    box-shadow: 0 2px 0 #000, 0 0 12px rgba(203, 191, 135, 0.3);
+    transform: translateY(2px);
+  }
+
+  .controls-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 26px;
+  }
+
+  .btn-anim-toggle {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7.5px;
+    padding: 8px 14px;
+    background: #111827;
+    color: #4ade80;
+    border: 1px solid #374151;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #000;
+  }
+
+  .angle-filter-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    padding: 6px 10px;
+    background: #151d2c;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .angle-filter-btn.active {
+    color: #ffd700;
+    border-color: #f59e0b;
+    background: #1e293b;
+  }
+
+  .pill-badge {
+    display: inline-block;
+    font-size: 6.5px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    background: #1e293b;
+    color: #38bdf8;
+    border: 1px solid #334155;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .tab-content {
+    display: none;
+    max-width: 1260px;
+    margin: 0 auto;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  .biome-section-title {
+    font-size: 9.5px;
+    color: #cbbf87;
+    border-left: 4px solid #cbbf87;
+    padding-left: 10px;
+    margin: 28px 0 16px;
+    letter-spacing: 1px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 32px 18px;
+  }
+
+  .grid-wide {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px 18px;
+  }
+
+  .card {
+    background: #14171c;
+    border: 1px solid #2c313a;
+    border-radius: 4px;
+    padding: 16px 12px 14px;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: #cbbf87;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.7), 0 0 12px rgba(203, 191, 135, 0.25);
+  }
+
+  .card-wide {
+    grid-column: span 1;
+  }
+
+  .char-card {
+    grid-column: 1 / -1;
+    text-align: left;
+    padding: 18px 20px;
+    background: #12151b;
+    border: 1px solid #334155;
+  }
+
+  .char-header {
+    margin-bottom: 14px;
+    border-bottom: 1px solid #232d3f;
+    padding-bottom: 8px;
+  }
+
+  .angles-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .angle-box {
+    background: #0d1017;
+    border: 1px solid #1e293b;
+    border-radius: 4px;
+    padding: 10px 6px;
+    text-align: center;
+  }
+
+  .angle-label {
+    font-size: 6px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .angle-scene {
+    height: 86px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .scene {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+
+  .scene-wide {
+    height: 130px;
+  }
+
+  .era {
+    font-size: 6.5px;
+    color: #f59e0b;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+
+  .arch {
+    font-size: 8px;
+    color: #f1f5f9;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .desc {
+    font-size: 6.5px;
+    color: #94a3b8;
+    line-height: 1.6;
+    font-family: sans-serif;
+  }
+
+  /* =========================================================
+     FÍSICA CINEMÁTICA RIGOROSA (CORREÇÃO DE FASES E TANGÊNCIAS)
+     ========================================================= */
+  body.animations-paused * {
+    animation-play-state: paused !important;
+  }
+
+  /* 1. Pêndulo de Jacobi: acelera caindo até 0° (ease-in), desacelera subindo (ease-out) */
+  .anim-pendulum-swing {
+    transform-origin: 60px 37px;
+    animation: jacobi-pendulum 2.4s infinite alternate;
+  }
+  @keyframes jacobi-pendulum {
+    0%   { transform: rotate(-24deg); animation-timing-function: ease-in;  }
+    50%  { transform: rotate(0deg);   animation-timing-function: ease-out; }
+    100% { transform: rotate(24deg); }
+  }
+
+  /* 2. Árvores e palmeiras ancoradas na base: transform-box: fill-box; transform-origin: 50% 100% */
+  .anim-tree-sway, .anim-palm-fronds, .anim-sway-cap {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+  .anim-tree-sway {
+    animation: pine-sway 3.6s ease-in-out infinite alternate;
+  }
+  @keyframes pine-sway {
+    0%   { transform: rotate(-1.5deg); }
+    100% { transform: rotate(1.5deg); }
+  }
+  .anim-palm-fronds {
+    animation: palm-breeze 3s ease-in-out infinite alternate;
+  }
+  @keyframes palm-breeze {
+    0%   { transform: rotate(-2deg); }
+    100% { transform: rotate(3deg); }
+  }
+  .anim-sway-cap {
+    animation: cap-breeze 3.2s ease-in-out infinite alternate;
+  }
+  @keyframes cap-breeze {
+    0%   { transform: rotate(-2deg); }
+    100% { transform: rotate(2deg); }
+  }
+
+  /* 3. Machado do Lenhador: ciclo físico real de lenhador (T = 1.8s)
+        - 0% a 25%: elevação controlada até o ápice alto (backswing sobre o ombro)
+        - 25% a 50%: queda gravitacional acelerada violentamente (downswing sob gravidade)
+        - 50%: IMPACTO SECO NA MADEIRA (choque inelástico cravando no toco)
+        - 50%: disparo sincronizado de lascas de madeira (chip-burst)
+        - 50% a 58%: penetração e leve recuo elástico na fibra
+        - 58% a 100%: desengate e elevação de volta à prontidão */
+  .anim-physics-axe-sw, .anim-physics-axe {
+    animation: axe-swing-sw 1.8s infinite;
+  }
+  @keyframes axe-swing-sw {
+    0%   { transform: rotate(32deg);  animation-timing-function: ease-in-out; }
+    25%  { transform: rotate(52deg);  animation-timing-function: cubic-bezier(0.55, 0.05, 0.85, 0.25); } /* Ápice alto */
+    50%  { transform: rotate(0deg);   animation-timing-function: ease-out; } /* IMPACTO NO TOCO (y=68) */
+    58%  { transform: rotate(-3deg);  animation-timing-function: ease-in-out; } /* Cravado na madeira */
+    68%  { transform: rotate(6deg);   animation-timing-function: ease-in-out; } /* Descolando da tora */
+    100% { transform: rotate(32deg); } /* Volta à prontidão */
+  }
+
+  .anim-physics-axe-se {
+    animation: axe-swing-se 1.8s infinite;
+  }
+  @keyframes axe-swing-se {
+    0%   { transform: rotate(-32deg); animation-timing-function: ease-in-out; }
+    25%  { transform: rotate(-52deg); animation-timing-function: cubic-bezier(0.55, 0.05, 0.85, 0.25); } /* Ápice alto */
+    50%  { transform: rotate(0deg);   animation-timing-function: ease-out; } /* IMPACTO NO TOCO (y=68) */
+    58%  { transform: rotate(3deg);   animation-timing-function: ease-in-out; } /* Cravado na madeira */
+    68%  { transform: rotate(-6deg);  animation-timing-function: ease-in-out; } /* Descolando da tora */
+    100% { transform: rotate(-32deg); } /* Volta à prontidão */
+  }
+
+  .anim-physics-axe-nw {
+    animation: axe-swing-nw 1.8s infinite;
+  }
+  @keyframes axe-swing-nw {
+    0%   { transform: rotate(-25deg); animation-timing-function: ease-in-out; }
+    25%  { transform: rotate(-45deg); animation-timing-function: cubic-bezier(0.55, 0.05, 0.85, 0.25); }
+    50%  { transform: rotate(5deg);   animation-timing-function: ease-out; }
+    58%  { transform: rotate(8deg);   animation-timing-function: ease-in-out; }
+    100% { transform: rotate(-25deg); }
+  }
+
+  .anim-physics-axe-ne, .anim-physics-axe-back {
+    animation: axe-swing-ne 1.8s infinite;
+  }
+  @keyframes axe-swing-ne {
+    0%   { transform: rotate(25deg);  animation-timing-function: ease-in-out; }
+    25%  { transform: rotate(45deg);  animation-timing-function: cubic-bezier(0.55, 0.05, 0.85, 0.25); }
+    50%  { transform: rotate(-5deg);  animation-timing-function: ease-out; }
+    58%  { transform: rotate(-8deg);  animation-timing-function: ease-in-out; }
+    100% { transform: rotate(25deg); }
+  }
+
+  /* Lascas de madeira sincronizadas com o impacto no exato momento 50% */
+  .anim-chip-burst-sw, .anim-chip-burst {
+    animation: chip-burst-sw 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  }
+  @keyframes chip-burst-sw {
+    0%, 48% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+    50%     { opacity: 1; transform: translate(0, 0) scale(1.2); }
+    60%     { opacity: 0.9; transform: translate(-5px, -8px) scale(1); }
+    75%     { opacity: 0.5; transform: translate(-10px, 4px) scale(0.8); }
+    88%, 100% { opacity: 0; transform: translate(-14px, 10px) scale(0.3); }
+  }
+
+  .anim-chip-burst-se {
+    animation: chip-burst-se 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  }
+  @keyframes chip-burst-se {
+    0%, 48% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+    50%     { opacity: 1; transform: translate(0, 0) scale(1.2); }
+    60%     { opacity: 0.9; transform: translate(5px, -8px) scale(1); }
+    75%     { opacity: 0.5; transform: translate(10px, 4px) scale(0.8); }
+    88%, 100% { opacity: 0; transform: translate(14px, 10px) scale(0.3); }
+  }
+
+  /* 4. Picareta e Faíscas em fase perfeita (1.6s, impacto aos 50% = 0.8s) */
+  .anim-physics-pickaxe {
+    animation: pick-swing 1.6s cubic-bezier(0.7, 0, 0.3, 1) infinite;
+  }
+  @keyframes pick-swing {
+    0%   { transform: rotate(-40deg); }
+    30%  { transform: rotate(-50deg); }
+    50%  { transform: rotate(15deg); }
+    65%  { transform: rotate(10deg); }
+    100% { transform: rotate(-40deg); }
+  }
+  .anim-physics-pickaxe-back {
+    animation: pick-swing-back 1.6s cubic-bezier(0.7, 0, 0.3, 1) infinite;
+  }
+  @keyframes pick-swing-back {
+    0%   { transform: rotate(40deg); }
+    30%  { transform: rotate(50deg); }
+    50%  { transform: rotate(-15deg); }
+    65%  { transform: rotate(-10deg); }
+    100% { transform: rotate(40deg); }
+  }
+  .anim-sparks {
+    animation: sparks-fly 1.6s linear infinite;
+  }
+  @keyframes sparks-fly {
+    0%, 48% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    50%     { opacity: 1; transform: translate(0, 0) scale(1.2); }
+    62%     { opacity: 0.9; transform: translate(3px, -8px) scale(1); }
+    80%     { opacity: 0;   transform: translate(6px, -3px) scale(0.3); }
+    100%    { opacity: 0; }
+  }
+
+  /* 5. Ceifa de trigo da Camponesa */
+  .anim-wheat-chaff {
+    animation: wheat-chaff-burst 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+  }
+  @keyframes wheat-chaff-burst {
+    0%, 45% { opacity: 0; transform: translate(0,0) scale(0.5); }
+    50%     { opacity: 1; transform: translate(-4px,-6px) scale(1.2); }
+    65%     { opacity: 0.8; transform: translate(-7px, -2px) scale(1); }
+    85%, 100% { opacity: 0; transform: translate(-10px, 4px) scale(0.4); }
+  }
+
+  /* 6. Vara do pescador e bóia */
+  .anim-rod-flex {
+    animation: rod-bend 2.8s ease-in-out infinite alternate;
+  }
+  @keyframes rod-bend {
+    0%   { transform: rotate(0deg); }
+    50%  { transform: rotate(4deg); }
+    100% { transform: rotate(-2deg); }
+  }
+  .anim-bobber-dip {
+    animation: bobber-float 2s ease-in-out infinite alternate;
+  }
+  @keyframes bobber-float {
+    0%   { transform: translateY(0); }
+    60%  { transform: translateY(2px); }
+    80%  { transform: translateY(-1px); }
+    100% { transform: translateY(3px); }
+  }
+
+  /* 7. Astrolábio de Jacobi */
+  .anim-astrolabe-spin {
+    animation: astrolabe-turn 6s ease-in-out infinite alternate;
+  }
+  @keyframes astrolabe-turn {
+    0%   { transform: rotate(-15deg); }
+    50%  { transform: rotate(25deg); }
+    100% { transform: rotate(-5deg); }
+  }
+  .anim-glow-pulse {
+    animation: pulse-glow 2s ease-in-out infinite alternate;
+  }
+  @keyframes pulse-glow {
+    0%   { opacity: 0.4; transform: scale(0.95); }
+    100% { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 4px #a855f7); }
+  }
+
+  /* 8. Fogo: lambidas verticais */
+  .anim-forge-fire, .anim-fire {
+    animation: fire-lick 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes fire-lick {
+    0%   { transform: translateY(0) scaleY(1) scaleX(1); opacity: 0.85; }
+    50%  { transform: translateY(-1.5px) scaleY(1.15) scaleX(0.92); opacity: 1; }
+    100% { transform: translateY(0) scaleY(1) scaleX(1); opacity: 0.85; }
+  }
+
+  /* 9. Água: fluxo no declive 0.5 */
+  .anim-water-flow {
+    animation: water-drift 2.2s linear infinite;
+  }
+  @keyframes water-drift {
+    0%   { transform: translate(0, 0); opacity: 0.6; }
+    50%  { transform: translate(4px, 2px); opacity: 0.95; }
+    100% { transform: translate(8px, 4px); opacity: 0.6; }
+  }
+
+  /* 10. Salto do peixe em arco com rotação do corpo */
+  .anim-fish-leap {
+    animation: fish-leap 3.2s ease-in-out infinite;
+  }
+  @keyframes fish-leap {
+    0%   { transform: translate(-6px, 4px) rotate(-18deg); }
+    35%  { transform: translate(0px, -6px) rotate(0deg); }
+    70%  { transform: translate(6px, 4px) rotate(18deg); }
+    100% { transform: translate(-6px, 4px) rotate(-18deg); }
+  }
+
+  /* 11. Fumaça: 3 camadas com deriva de vento coincidente */
+  .anim-smoke-1 { animation: smoke-drift 2.4s ease-out infinite; animation-delay: 0s; }
+  .anim-smoke-2 { animation: smoke-drift 2.4s ease-out infinite; animation-delay: -0.8s; }
+  .anim-smoke-3 { animation: smoke-drift 2.4s ease-out infinite; animation-delay: -1.6s; }
+  @keyframes smoke-drift {
+    0%   { transform: translate(0, 0) scale(0.6); opacity: 0.8; }
+    50%  { transform: translate(3px, -10px) scale(1.2); opacity: 0.5; }
+    100% { transform: translate(7px, -24px) scale(1.8); opacity: 0; }
+  }
+
+  /* 12. Mecanismos: engrenagens opostas e eixos */
+  .anim-gear-spin {
+    animation: gear-spin 8s linear infinite;
+  }
+  .anim-gear-spin-b {
+    animation: gear-spin-rev 5.3s linear infinite;
+  }
+  .anim-pulley-spin {
+    animation: gear-spin 2.4s linear infinite;
+  }
+  .anim-pulley-spin-b {
+    animation: gear-spin-rev 2.4s linear infinite;
+  }
+  .anim-wheel-paddle-flow {
+    animation: gear-spin 4s linear infinite;
+  }
+  @keyframes gear-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes gear-spin-rev {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(-360deg); }
+  }
+
+  /* 13. Balancim e êmbolo em contrafase sincronizada */
+  .anim-pumpjack {
+    animation: beam-cycle 2.4s ease-in-out infinite alternate;
+  }
+  .anim-pump-rod {
+    animation: rod-counterphase 2.4s ease-in-out infinite alternate;
+  }
+  @keyframes beam-cycle {
+    0%   { transform: rotate(-10deg); }
+    100% { transform: rotate(10deg); }
+  }
+  @keyframes rod-counterphase {
+    0%   { transform: translateY(-4px); }
+    100% { transform: translateY(4px); }
+  }
+
+  .anim-saw-blade {
+    animation: saw-stroke 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite alternate;
+  }
+  @keyframes saw-stroke {
+    0%   { transform: translateY(-7px); }
+    100% { transform: translateY(7px); }
+  }
+
+  .anim-crane-swing {
+    animation: crane-sway 6s ease-in-out infinite alternate;
+  }
+  @keyframes crane-sway {
+    0%   { transform: rotate(-5deg); }
+    100% { transform: rotate(8deg); }
+  }
+
+  .anim-sparkle-ore {
+    animation: sparkle-twinkle 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes sparkle-twinkle {
+    0%   { opacity: 0.3; transform: scale(0.8); }
+    50%  { opacity: 1; transform: scale(1.2); }
+    100% { opacity: 0.4; transform: scale(0.9); }
+  }
+
+  /* =========================================================
+     CORREÇÃO A — ORIGEM DE TRANSFORMAÇÃO
+     Em SVG o transform-box padrão é view-box: scale() e rotate()
+     giram em torno do centro da CENA, não do próprio elemento.
+     Sem isto, lascas, faíscas e chamas saltavam até 16px em
+     direção ao centro do viewBox antes de aparecer.
+     Não aplicar aos grupos que já declaram transform-origin em
+     px de viewBox (machado, picareta, engrenagem, roldana,
+     balancim, guindaste, roda d'água, pêndulo): ali o px se
+     refere à cena e está correto.
+     ========================================================= */
+  .anim-chip-burst, .anim-chip-burst-sw, .anim-chip-burst-se,
+  .anim-sparks, .anim-wheat-chaff, .anim-sparkle-ore,
+  .anim-glow-pulse, .anim-fish-leap,
+  .anim-smoke-1, .anim-smoke-2, .anim-smoke-3 {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+  /* Chama cresce a partir da base, não do próprio centro */
+  .anim-fire, .anim-forge-fire {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+  }
+
+  /* =========================================================
+     CORREÇÃO B — CLASSES DECLARADAS NO HTML QUE NÃO EXISTIAM
+     NO CSS. Toda a aba de arquétipos estava estática apesar
+     dos comentários "(Animada!)".
+     ========================================================= */
+
+  /* B1. Fumaça, vapor e esporos: cada partícula do grupo sobe
+     com defasagem própria (o grupo inteiro não sobe rígido) e
+     a deriva vai para +x, o mesmo vetor de vento da água. */
+  g.anim-smoke-gentle > *, g.anim-steam-puff > *,
+  g.anim-heavy-smoke > *, g.anim-float-spores > *,
+  circle.anim-float-spores {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+  g.anim-smoke-gentle > * { animation: puff-rise 3s ease-out infinite; }
+  g.anim-steam-puff   > * { animation: puff-rise 1.8s ease-out infinite; }
+  g.anim-heavy-smoke  > * { animation: puff-rise-heavy 4.2s ease-out infinite; }
+  g.anim-float-spores > *,
+  circle.anim-float-spores { animation: spore-float 5s ease-in-out infinite; }
+
+  g.anim-smoke-gentle > *:nth-child(2), g.anim-steam-puff > *:nth-child(2),
+  g.anim-heavy-smoke > *:nth-child(2), g.anim-float-spores > *:nth-child(2) {
+    animation-delay: -1.1s;
+  }
+  g.anim-smoke-gentle > *:nth-child(3), g.anim-steam-puff > *:nth-child(3),
+  g.anim-heavy-smoke > *:nth-child(3), g.anim-float-spores > *:nth-child(3) {
+    animation-delay: -2.2s;
+  }
+  g.anim-heavy-smoke > *:nth-child(4), g.anim-float-spores > *:nth-child(4) {
+    animation-delay: -3.3s;
+  }
+
+  @keyframes puff-rise {
+    0%   { transform: translate(0, 0) scale(0.5); opacity: 0.75; }
+    55%  { transform: translate(3px, -9px) scale(1.15); opacity: 0.45; }
+    100% { transform: translate(7px, -20px) scale(1.7); opacity: 0; }
+  }
+  @keyframes puff-rise-heavy {
+    0%   { transform: translate(0, 0) scale(0.55); opacity: 0.9; }
+    50%  { transform: translate(4px, -10px) scale(1.2); opacity: 0.6; }
+    100% { transform: translate(10px, -26px) scale(2); opacity: 0; }
+  }
+  @keyframes spore-float {
+    0%   { transform: translate(0, 0) scale(0.7); opacity: 0.2; }
+    30%  { transform: translate(2px, -5px) scale(1); opacity: 0.9; }
+    70%  { transform: translate(-1px, -11px) scale(1); opacity: 0.7; }
+    100% { transform: translate(3px, -18px) scale(0.6); opacity: 0; }
+  }
+
+  /* B2. Estruturas leves ancoradas na base (mesmo princípio das
+     árvores): telhado de couro, folhagem e toldo de pano. */
+  .anim-sway-roof, .anim-leaves-sway, .anim-cloth-flutter {
+    transform-box: fill-box;
+  }
+  .anim-sway-roof {
+    transform-origin: 50% 100%;
+    animation: roof-sway 4.4s ease-in-out infinite alternate;
+  }
+  @keyframes roof-sway {
+    0%   { transform: rotate(-0.7deg); }
+    100% { transform: rotate(0.7deg); }
+  }
+  .anim-leaves-sway {
+    transform-origin: 50% 100%;
+    animation: cap-breeze 3.2s ease-in-out infinite alternate;
+  }
+  .anim-cloth-flutter {
+    transform-origin: 0% 50%;
+    animation: cloth-wave 2.6s ease-in-out infinite alternate;
+  }
+  @keyframes cloth-wave {
+    0%   { transform: rotate(-1.2deg) scaleY(0.97); }
+    100% { transform: rotate(1.6deg) scaleY(1.03); }
+  }
+
+  /* B3. Mecanismos com eixo real: origem em px da cena, no cubo
+     exato de cada peça (mastro, pino do mostrador, esfera). */
+  .anim-weather-vane {
+    transform-origin: 82px 4px;
+    animation: vane-turn 5.5s ease-in-out infinite alternate;
+  }
+  @keyframes vane-turn {
+    0%   { transform: rotate(-18deg); }
+    100% { transform: rotate(26deg); }
+  }
+  .anim-dial-pointer {
+    transform-origin: 60px 27px;
+    animation: dial-sweep 4.8s ease-in-out infinite alternate;
+  }
+  @keyframes dial-sweep {
+    0%   { transform: rotate(-28deg); }
+    100% { transform: rotate(28deg); }
+  }
+  .anim-armillary {
+    transform-origin: 60px 7px;
+    animation: gear-spin 14s linear infinite;
+  }
+  .anim-orbital-rings {
+    transform-origin: 60px 48px;
+    animation: gear-spin 18s linear infinite;
+  }
+  .anim-turbine-spin {
+    transform-origin: 60px 6px;
+    animation: gear-spin 1.4s linear infinite;
+  }
+
+  /* B4. Monólito: flutuação lenta e toroide de plasma pulsante */
+  .anim-levitate {
+    animation: levitate-bob 3.6s ease-in-out infinite alternate;
+  }
+  @keyframes levitate-bob {
+    0%   { transform: translateY(2px); }
+    100% { transform: translateY(-3px); }
+  }
+  .anim-plasma-pulse {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    animation: plasma-throb 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes plasma-throb {
+    0%   { transform: scale(0.88); opacity: 0.75; }
+    100% { transform: scale(1.12); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>OIKOS — CADERNO DE MODELOS DIMÉTRICOS 2:1</h1>
+  <p class="sub">
+    Catálogo canônico de ativos gráficos em pixel art 16-bit com geometria dimétrica 2:1 rigorosa.<br>
+    Constantes exatas: HW = 32px · HH = 16px · S = 16√5 ≈ 35.78px · Declives ±0.5 · Elipse rx = 2·ry.
+  </p>
+
+  <!-- NAVEGAÇÃO ENTRE AS 4 CATEGORIAS DE MODELOS + 1 MATEMÁTICA -->
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('characters', event)">[ 👤 PERSONAGENS EM 4 ÂNGULOS ]</button>
+    <button class="tab-btn" onclick="switchTab('nature', event)">[ 🌲 ROCHAS, ÁRVORES & NATUREZA ]</button>
+    <button class="tab-btn" onclick="switchTab('machines', event)">[ ⚙️ MAQUINÁRIOS EXTRATIVISTAS ]</button>
+    <button class="tab-btn" onclick="switchTab('archetypes', event)">[ 🏛️ ARQUÉTIPOS ARQUITETÔNICOS ]</button>
+    <button class="tab-btn" onclick="switchTab('geometry', event)">[ 📐 GEOMETRIA & FÍSICA DIMÉTRICA ]</button>
+  </div>
+
+  <div class="controls-bar">
+    <button class="btn-anim-toggle" onclick="toggleAnimations()">
+      ANIMAÇÕES FÍSICAS: <span id="anim-status" style="color:#4ade80;">ON</span>
+    </button>
+  </div>
+</header>
+
+<main>
+
+<!-- ABA 1: PERSONAGENS EM 4 ÂNGULOS -->
+<div id="tab-characters" class="tab-content active">
+  <div style="display:flex; justify-content:center; gap:8px; margin-bottom:18px;">
+    <button class="angle-filter-btn active" onclick="filterAngles('all', event)">[ TODOS OS 4 ÂNGULOS ]</button>
+    <button class="angle-filter-btn" onclick="filterAngles('sw', event)">↙ FRENTE-ESQ (SW)</button>
+    <button class="angle-filter-btn" onclick="filterAngles('se', event)">↘ FRENTE-DIR (SE)</button>
+    <button class="angle-filter-btn" onclick="filterAngles('nw', event)">↖ TRÁS-ESQ (NW)</button>
+    <button class="angle-filter-btn" onclick="filterAngles('ne', event)">↗ TRÁS-DIR (NE)</button>
+  </div>
+  <div class="grid" style="grid-template-columns: 1fr;">
+    
+    <div class="card char-card" data-char="lenhador">
+      <div class="char-header">
+        <div class="era">SILVICULTURA / EXTRAÇÃO</div>
+        <div class="arch">O Lenhador</div>
+        <div class="pill-badge">Machado Florestal (Gume Único)</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#1e3a8a"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#1d4ed8"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#172554"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#1e3a8a"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#1d4ed8"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#172554"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#451a03"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#2e1102"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#1c0a00"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#451a03"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#2e1102"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#1c0a00"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#b91c1c"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#dc2626"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#991b1b"/><line x1="34" y1="46" x2="44" y2="51" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="32" y1="50" x2="42" y2="55" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="36" y1="44" x2="36" y2="58" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="41" y1="46.5" x2="41" y2="60" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><polygon points="35.4,38.9 43.5,42.9 40,44.7 31.8,40.6" fill="#78350f"/><polygon points="31.8,44.9 40,49 40,44.7 31.8,40.6" fill="#54260a"/><polygon points="43.5,47.2 40,49 40,44.7 43.5,42.9" fill="#361805"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#334155"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#1e293b"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#0f172a"/>
+        <line x1="34" y1="46" x2="35" y2="53" stroke="#b91c1c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="35" cy="53" r="2.2" fill="#fbcfe8"/>
+        <line x1="46" y1="46" x2="41" y2="50" stroke="#b91c1c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="41" cy="50" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-axe-sw" style="transform-origin:35px 53px">
+          <!-- Cabo de nogueira com declive -0.5000 exato: de (45,48) a (21,60) [dx=-24, dy=12] -->
+          <line x1="45" y1="48" x2="21" y2="60" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="44" y1="48.5" x2="22" y2="59.5" stroke="#d97706" stroke-width="1"/>
+          
+          <!-- Olho de ferro forjado (Eye) fixando o cabo -->
+          <polygon points="19.5,58.5 22.5,60 22.5,62 19.5,60.5" fill="#1e293b"/>
+
+          <!-- Dorso / Coronha plano (Poll/Butt) para contrapeso - SEM SEGUNDA LÂMINA -->
+          <polygon points="21,59 24,57.5 25.5,59.5 22.5,61" fill="#475569"/>
+          <polygon points="21,59 24,57.5 23,56.5 20,58" fill="#64748b"/>
+
+          <!-- Gume Único de Corte (Single Cutting Bit): cunha afiada voltada para a madeira -->
+          <polygon points="21,60.5 16,66 18.5,69 22.5,61.5" fill="#64748b"/>
+          <polygon points="16,66 14.5,67 17,70 18.5,69" fill="#94a3b8"/>
+          <!-- Fio curvo de aço polido -->
+          <path d="M 14.5,67 Q 15.5,68.5 17,70" stroke="#f8fafc" stroke-width="1.2" fill="none"/>
+        </g>
+        <!-- Toco de madeira com fenda de corte -->
+        <polygon points="14,66 22,70 22,74 14,70" fill="#451a03"/>
+        <ellipse cx="18" cy="68" rx="4" ry="2" fill="#b45309"/>
+        <ellipse cx="18" cy="68" rx="2" ry="1" fill="#78350f"/>
+        <line x1="16" y1="67" x2="19" y2="69" stroke="#1c0a00" stroke-width="1"/>
+        <!-- Lascas balísticas disparadas no instante do impacto (50%) -->
+        <circle cx="17" cy="67" r="1.5" fill="#fde047" class="anim-chip-burst-sw"/>
+        <circle cx="15" cy="65" r="1.2" fill="#b45309" class="anim-chip-burst-sw"/>
+        <circle cx="19" cy="66" r="1.3" fill="#f59e0b" class="anim-chip-burst-sw"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#1e3a8a"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#1d4ed8"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#172554"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#1e3a8a"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#1d4ed8"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#172554"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#451a03"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#2e1102"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#1c0a00"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#451a03"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#2e1102"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#1c0a00"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#b91c1c"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#dc2626"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#991b1b"/><line x1="46" y1="46" x2="36" y2="51" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="48" y1="50" x2="38" y2="55" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="44" y1="44" x2="44" y2="58" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><line x1="39" y1="46.5" x2="39" y2="60" stroke="#1e293b" stroke-width="1.2" opacity="0.65"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><polygon points="40,36.6 43.5,38.3 35.4,42.4 31.8,40.6" fill="#78350f"/><polygon points="43.5,42.6 35.4,46.7 35.4,42.4 43.5,38.3" fill="#54260a"/><polygon points="31.8,44.9 35.4,46.7 35.4,42.4 31.8,40.6" fill="#361805"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#334155"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#1e293b"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#0f172a"/>
+        <line x1="46" y1="46" x2="45" y2="53" stroke="#b91c1c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="45" cy="53" r="2.2" fill="#fbcfe8"/>
+        <line x1="34" y1="46" x2="39" y2="50" stroke="#b91c1c" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="39" cy="50" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-axe-se" style="transform-origin:45px 53px">
+          <!-- Cabo de nogueira com declive +0.5000 exato: de (35,48) a (59,60) [dx=24, dy=12] -->
+          <line x1="35" y1="48" x2="59" y2="60" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="36" y1="48.5" x2="58" y2="59.5" stroke="#d97706" stroke-width="1"/>
+          
+          <!-- Olho de ferro forjado (Eye) fixando o cabo -->
+          <polygon points="60.5,58.5 57.5,60 57.5,62 60.5,60.5" fill="#1e293b"/>
+
+          <!-- Dorso / Coronha plano (Poll/Butt) para contrapeso - SEM SEGUNDA LÂMINA -->
+          <polygon points="59,59 56,57.5 54.5,59.5 57.5,61" fill="#475569"/>
+          <polygon points="59,59 56,57.5 57,56.5 60,58" fill="#64748b"/>
+
+          <!-- Gume Único de Corte (Single Cutting Bit): cunha afiada voltada para a madeira -->
+          <polygon points="59,60.5 64,66 61.5,69 57.5,61.5" fill="#64748b"/>
+          <polygon points="64,66 65.5,67 63,70 61.5,69" fill="#94a3b8"/>
+          <!-- Fio curvo de aço polido -->
+          <path d="M 65.5,67 Q 64.5,68.5 63,70" stroke="#f8fafc" stroke-width="1.2" fill="none"/>
+        </g>
+        <!-- Toco de madeira com fenda de corte -->
+        <polygon points="66,66 58,70 58,74 66,70" fill="#451a03"/>
+        <ellipse cx="62" cy="68" rx="4" ry="2" fill="#b45309"/>
+        <ellipse cx="62" cy="68" rx="2" ry="1" fill="#78350f"/>
+        <line x1="64" y1="67" x2="61" y2="69" stroke="#1c0a00" stroke-width="1"/>
+        <!-- Lascas balísticas disparadas no instante do impacto (50%) -->
+        <circle cx="63" cy="67" r="1.5" fill="#fde047" class="anim-chip-burst-se"/>
+        <circle cx="65" cy="65" r="1.2" fill="#b45309" class="anim-chip-burst-se"/>
+        <circle cx="61" cy="66" r="1.3" fill="#f59e0b" class="anim-chip-burst-se"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#1e3a8a"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#172554"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#172554"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#1e3a8a"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#172554"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#172554"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#451a03"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#1c0a00"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#1c0a00"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#451a03"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#1c0a00"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#1c0a00"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#b91c1c"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#991b1b"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#991b1b"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#78350f"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#361805"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#361805"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#334155"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#0f172a"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#0f172a"/>
+        <line x1="35" y1="46" x2="38" y2="52" stroke="#991b1b" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="38" cy="52" r="2" fill="#fbcfe8"/>
+        <g class="anim-physics-axe-nw" style="transform-origin:38px 52px">
+          <!-- NW/NE: declive exato +/- 0.5000 -->
+          <line x1="44" y1="55" x2="20" y2="43" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="43" y1="54.5" x2="21" y2="43.5" stroke="#d97706" stroke-width="1"/>
+          <!-- Olho -->
+          <rect x="18.5" y="42" width="3" height="3" fill="#1e293b"/>
+          <!-- Dorso plano (Poll) atrás -->
+          <polygon points="20,42 23,40 24,42 21,43" fill="#475569"/>
+          <!-- Gume Único para frente/baixo -->
+          <polygon points="20,43 14,48 16,51 21,44" fill="#64748b"/>
+          <polygon points="14,48 13,49 15,52 16,51" fill="#94a3b8"/>
+          <path d="M 13,49 Q 14,50.5 15,52" stroke="#f8fafc" stroke-width="1.2" fill="none"/>
+        </g>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#1e3a8a"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#172554"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#172554"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#1e3a8a"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#172554"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#172554"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#451a03"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#1c0a00"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#1c0a00"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#451a03"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#1c0a00"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#1c0a00"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#b91c1c"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#991b1b"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#991b1b"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#78350f"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#361805"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#361805"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#334155"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#0f172a"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#0f172a"/>
+        <line x1="45" y1="46" x2="42" y2="52" stroke="#991b1b" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="42" cy="52" r="2" fill="#fbcfe8"/>
+        <g class="anim-physics-axe-ne" style="transform-origin:42px 52px">
+          <!-- NW/NE: declive exato +/- 0.5000 -->
+          <line x1="36" y1="55" x2="60" y2="43" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="37" y1="54.5" x2="59" y2="43.5" stroke="#d97706" stroke-width="1"/>
+          <!-- Olho -->
+          <rect x="58.5" y="42" width="3" height="3" fill="#1e293b"/>
+          <!-- Dorso plano (Poll) atrás -->
+          <polygon points="60,42 57,40 56,42 59,43" fill="#475569"/>
+          <!-- Gume Único para frente/baixo -->
+          <polygon points="60,43 66,48 64,51 59,44" fill="#64748b"/>
+          <polygon points="66,48 67,49 65,52 64,51" fill="#94a3b8"/>
+          <path d="M 67,49 Q 66,50.5 65,52" stroke="#f8fafc" stroke-width="1.2" fill="none"/>
+        </g>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Corta árvores e desbasta toras. Camisa xadrez com pixels alternados, suspensórios de couro e machado florestal de derrubada com gume único curvo, dorso pesado e lascas balísticas.</div>
+    </div>
+  
+
+    <div class="card char-card" data-char="mineiro">
+      <div class="char-header">
+        <div class="era">MINERAÇÃO SUBTERRÂNEA</div>
+        <div class="arch">O Mineiro</div>
+        <div class="pill-badge">Picareta & Lanterna Frontal</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><defs>
+          <linearGradient id="coneLight_mineiro_sw" x1="35" y1="33" x2="15" y2="43" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#fef08a" stop-opacity="0.80"/>
+            <stop offset="45%" stop-color="#facc15" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#eab308" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#64748b"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#475569"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#334155"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#64748b"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#475569"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#334155"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#1e293b"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#0f172a"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#020617"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#1e293b"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#0f172a"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#020617"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#94a3b8"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#64748b"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#475569"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#facc15"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#eab308"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><circle cx="35" cy="33" r="2.8" fill="#d97706"/><circle cx="35" cy="33" r="1.6" fill="#fef08a"/><polygon points="35,33 11,38 17,49" fill="url(#coneLight_mineiro_sw)"/>
+        <line x1="34" y1="46" x2="35" y2="53" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="35" cy="53" r="2.2" fill="#fbcfe8"/>
+        <line x1="46" y1="46" x2="41" y2="50" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="41" cy="50" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-pickaxe" style="transform-origin:35px 53px">
+          <!-- Cabo declive -0.5000 exato: de (47,47) a (23,59) [dx=-24, dy=12] -->
+          <line x1="47" y1="47" x2="23" y2="59" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="46" y1="47.5" x2="24" y2="58.5" stroke="#b45309" stroke-width="1"/>
+
+          <!-- Cabeça de aço volumétrica: declive perpendicular exato 2.0000 -->
+          <!-- Centro em (23,59), estende de (17,47) a (28,69) [dx=11, dy=22 -> dy/dx = 2.0000!] -->
+          <polygon points="17,47 28,69 26,70 15,48" fill="#94a3b8"/>
+          <polygon points="17,47 28,69 29,68 18,46" fill="#cbd5e1"/>
+          <circle cx="23" cy="59" r="2" fill="#1e293b"/>
+          <polygon points="28,69 26,70 29,72" fill="#f8fafc"/>
+        </g>
+        <polygon points="24,68 32,72 30,76 22,72" fill="#334155"/>
+        <circle cx="27" cy="71" r="1.5" fill="#f59e0b"/>
+        <circle cx="28" cy="65" r="1.6" fill="#fde047" class="anim-sparks"/>
+        <circle cx="32" cy="63" r="1.3" fill="#f59e0b" class="anim-sparks"/>
+        <circle cx="25" cy="61" r="1.2" fill="#ffffff" class="anim-sparks"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><defs>
+          <linearGradient id="coneLight_mineiro_se" x1="45" y1="33" x2="65" y2="43" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#fef08a" stop-opacity="0.80"/>
+            <stop offset="45%" stop-color="#facc15" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#eab308" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#64748b"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#475569"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#334155"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#64748b"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#475569"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#334155"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#1e293b"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#0f172a"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#020617"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#1e293b"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#0f172a"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#020617"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#94a3b8"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#64748b"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#475569"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#facc15"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#eab308"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><circle cx="45" cy="33" r="2.8" fill="#d97706"/><circle cx="45" cy="33" r="1.6" fill="#fef08a"/><polygon points="45,33 69,38 63,49" fill="url(#coneLight_mineiro_se)"/>
+        <line x1="46" y1="46" x2="45" y2="53" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="45" cy="53" r="2.2" fill="#fbcfe8"/>
+        <line x1="34" y1="46" x2="39" y2="50" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="39" cy="50" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-pickaxe" style="transform-origin:45px 53px">
+          <!-- Cabo declive +0.5000 exato: de (33,47) a (57,59) [dx=24, dy=12] -->
+          <line x1="33" y1="47" x2="57" y2="59" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="34" y1="47.5" x2="56" y2="58.5" stroke="#b45309" stroke-width="1"/>
+
+          <!-- Perpendicular exato: declive -2.0000: de (63,47) a (52,69) [dx=-11, dy=22] -->
+          <polygon points="63,47 52,69 54,70 65,48" fill="#94a3b8"/>
+          <polygon points="63,47 52,69 51,68 62,46" fill="#cbd5e1"/>
+          <circle cx="57" cy="59" r="2" fill="#1e293b"/>
+          <polygon points="52,69 54,70 51,72" fill="#f8fafc"/>
+        </g>
+        <polygon points="56,68 48,72 50,76 58,72" fill="#334155"/>
+        <circle cx="53" cy="71" r="1.5" fill="#f59e0b"/>
+        <circle cx="52" cy="65" r="1.6" fill="#fde047" class="anim-sparks"/>
+        <circle cx="48" cy="63" r="1.3" fill="#f59e0b" class="anim-sparks"/>
+        <circle cx="55" cy="61" r="1.2" fill="#ffffff" class="anim-sparks"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#64748b"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#334155"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#334155"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#64748b"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#334155"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#334155"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#1e293b"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#020617"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#020617"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#1e293b"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#020617"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#020617"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#94a3b8"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#475569"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#475569"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#451a03"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#1c0a00"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#1c0a00"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#facc15"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/>
+        <line x1="35" y1="46" x2="38" y2="52" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="38" cy="52" r="2" fill="#fbcfe8"/>
+        <g class="anim-physics-pickaxe-back" style="transform-origin:38px 52px">
+          <!-- NW/NE: cabo com declive +/- 0.5000 exato -->
+          <line x1="44" y1="55" x2="20" y2="42" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <polygon points="20,42 17,35 15,48" fill="#94a3b8"/>
+        </g>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#64748b"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#334155"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#334155"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#64748b"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#334155"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#334155"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#1e293b"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#020617"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#020617"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#1e293b"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#020617"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#020617"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#94a3b8"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#475569"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#475569"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#451a03"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#1c0a00"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#1c0a00"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#facc15"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/>
+        <line x1="45" y1="46" x2="42" y2="52" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="42" cy="52" r="2" fill="#fbcfe8"/>
+        <g class="anim-physics-pickaxe-back" style="transform-origin:42px 52px">
+          <!-- NW/NE: cabo com declive +/- 0.5000 exato -->
+          <line x1="36" y1="55" x2="60" y2="42" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <polygon points="60,42 63,35 65,48" fill="#94a3b8"/>
+        </g>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Escava galerias de cobre e ferro. Capacete amarelo com lanterna frontal em feixe dimétrico contido e picareta de aço volumétrica perpendicular exata.</div>
+    </div>
+  
+
+    <div class="card char-card" data-char="camponesa">
+      <div class="char-header">
+        <div class="era">AGRICULTURA / VÁRZEA</div>
+        <div class="arch">A Camponesa (Ceifeira)</div>
+        <div class="pill-badge">Foice Curva & Cesto</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#16a34a"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#15803d"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#14532d"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#16a34a"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#15803d"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#14532d"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#78350f"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#54260a"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#361805"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#78350f"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#54260a"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#361805"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#fef08a"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#facc15"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#ca8a04"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#eab308"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><polygon points="40,30.6 50.3,35.8 40,40.9 29.7,35.8" fill="#0284c7"/><polygon points="29.7,37 40,42.1 40,40.9 29.7,35.8" fill="#0284c7"/><polygon points="50.3,37 40,42.1 40,40.9 50.3,35.8" fill="#0369a1"/><path d="M 44,38 Q 47,40 46,44" stroke="#38bdf8" stroke-width="1.8" fill="none"/>
+        <!-- Cesto de Vime Dimétrico com Trigo -->
+        <polygon points="44,50 49,52.5 49,58 44,55.5" fill="#a16207"/>
+        <polygon points="49,52.5 54,50 54,55.5 49,58" fill="#78350f"/>
+        <ellipse cx="49" cy="51" rx="5" ry="2.5" fill="#ca8a04"/>
+        <line x1="45" y1="52" x2="48" y2="57" stroke="#451a03" stroke-width="1"/>
+        <line x1="50" y1="56" x2="53" y2="52" stroke="#451a03" stroke-width="1"/>
+        <circle cx="48" cy="49" r="1.5" fill="#fde047"/>
+        <circle cx="51" cy="49.5" r="1.6" fill="#fef08a"/>
+      
+        <line x1="33" y1="46" x2="28" y2="53" stroke="#fef08a" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="28" cy="53" r="2" fill="#fbcfe8"/>
+
+        <!-- Cabo da foice declive +0.5000 exato: de (32,55) a (28,53) [dx=-4, dy=-2] -->
+        <line x1="32" y1="55" x2="28" y2="53" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+
+        <!-- Lâmina de aço curva em gancho clássico de ceifa -->
+        <path d="M 28,53 C 22,51 16,55 16,61 C 16,66 20,68 23,66" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M 28,53 C 23,52 18,55 18,60 C 18,64 21,65 23,66" fill="none" stroke="#f8fafc" stroke-width="1.2"/>
+
+        <line x1="16" y1="68" x2="16" y2="57" stroke="#ca8a04" stroke-width="1.5"/>
+        <line x1="19" y1="69" x2="19" y2="56" stroke="#eab308" stroke-width="1.5"/>
+        <line x1="22" y1="70" x2="23" y2="58" stroke="#ca8a04" stroke-width="1.5"/>
+        <circle cx="16" cy="56" r="1.5" fill="#fef08a"/>
+        <circle cx="19" cy="55" r="1.6" fill="#fde047"/>
+
+        <!-- Espigas e grãos de trigo dourado voando (anim-wheat-chaff) -->
+        <circle cx="18" cy="50" r="1.5" fill="#fef08a" class="anim-wheat-chaff"/>
+        <circle cx="14" cy="53" r="1.3" fill="#fde047" class="anim-wheat-chaff"/>
+        <circle cx="21" cy="48" r="1.2" fill="#ca8a04" class="anim-wheat-chaff"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#16a34a"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#15803d"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#14532d"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#16a34a"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#15803d"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#14532d"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#78350f"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#54260a"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#361805"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#78350f"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#54260a"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#361805"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#fef08a"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#facc15"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#ca8a04"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#eab308"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><polygon points="40,30.6 50.3,35.8 40,40.9 29.7,35.8" fill="#0284c7"/><polygon points="50.3,37 40,42.1 40,40.9 50.3,35.8" fill="#0284c7"/><polygon points="29.7,37 40,42.1 40,40.9 29.7,35.8" fill="#0369a1"/><path d="M 36,38 Q 33,40 34,44" stroke="#38bdf8" stroke-width="1.8" fill="none"/>
+        <polygon points="36,50 31,52.5 31,58 36,55.5" fill="#a16207"/>
+        <polygon points="31,52.5 26,50 26,55.5 31,58" fill="#78350f"/>
+        <ellipse cx="31" cy="51" rx="5" ry="2.5" fill="#ca8a04"/>
+        <line x1="35" y1="52" x2="32" y2="57" stroke="#451a03" stroke-width="1"/>
+        <line x1="30" y1="56" x2="27" y2="52" stroke="#451a03" stroke-width="1"/>
+        <circle cx="32" cy="49" r="1.5" fill="#fde047"/>
+        <circle cx="29" cy="49.5" r="1.6" fill="#fef08a"/>
+      
+        <line x1="47" y1="46" x2="52" y2="53" stroke="#fef08a" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="52" cy="53" r="2" fill="#fbcfe8"/>
+
+        <line x1="48" y1="55" x2="52" y2="53" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+
+        <path d="M 52,53 C 58,51 64,55 64,61 C 64,66 60,68 57,66" fill="none" stroke="#475569" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M 52,53 C 57,52 62,55 62,60 C 62,64 59,65 57,66" fill="none" stroke="#f8fafc" stroke-width="1.2"/>
+
+        <line x1="64" y1="68" x2="64" y2="57" stroke="#ca8a04" stroke-width="1.5"/>
+        <line x1="61" y1="69" x2="61" y2="56" stroke="#eab308" stroke-width="1.5"/>
+        <line x1="58" y1="70" x2="57" y2="58" stroke="#ca8a04" stroke-width="1.5"/>
+        <circle cx="64" cy="56" r="1.5" fill="#fef08a"/>
+        <circle cx="61" cy="55" r="1.6" fill="#fde047"/>
+
+        <circle cx="62" cy="50" r="1.5" fill="#fef08a" class="anim-wheat-chaff"/>
+        <circle cx="66" cy="53" r="1.3" fill="#fde047" class="anim-wheat-chaff"/>
+        <circle cx="59" cy="48" r="1.2" fill="#ca8a04" class="anim-wheat-chaff"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#16a34a"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#14532d"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#14532d"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#16a34a"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#14532d"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#14532d"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#78350f"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#361805"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#361805"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#78350f"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#361805"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#361805"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#fef08a"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#ca8a04"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#ca8a04"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ca8a04"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#713f12"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#713f12"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><polygon points="40,30.6 50.3,35.8 40,40.9 29.7,35.8" fill="#0284c7"/><polygon points="29.7,37 40,42.1 40,40.9 29.7,35.8" fill="#0369a1"/><polygon points="50.3,37 40,42.1 40,40.9 50.3,35.8" fill="#0369a1"/>
+        <line x1="35" y1="46" x2="30" y2="52" stroke="#fde047" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="30" cy="52" r="1.8" fill="#fbcfe8"/>
+        <path d="M 30,52 C 24,50 20,55 22,62" fill="none" stroke="#64748b" stroke-width="2.2" stroke-linecap="round"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#16a34a"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#14532d"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#14532d"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#16a34a"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#14532d"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#14532d"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#78350f"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#361805"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#361805"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#78350f"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#361805"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#361805"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#fef08a"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#ca8a04"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#ca8a04"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ca8a04"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#713f12"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#713f12"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><polygon points="40,30.6 50.3,35.8 40,40.9 29.7,35.8" fill="#0284c7"/><polygon points="50.3,37 40,42.1 40,40.9 50.3,35.8" fill="#0369a1"/><polygon points="29.7,37 40,42.1 40,40.9 29.7,35.8" fill="#0369a1"/>
+        <line x1="45" y1="46" x2="50" y2="52" stroke="#fde047" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="50" cy="52" r="1.8" fill="#fbcfe8"/>
+        <path d="M 50,52 C 56,50 60,55 58,62" fill="none" stroke="#64748b" stroke-width="2.2" stroke-linecap="round"/>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Colhe espigas de trigo dourado nas várzeas. Vestido verde-oliva com corpete de linho, chapéu de palha com fita azul, cesto de vime no quadril e foice curva autêntica com grãos de trigo.</div>
+    </div>
+  
+
+    <div class="card char-card" data-char="ferreiro">
+      <div class="char-header">
+        <div class="era">METALURGIA / ARMARIA</div>
+        <div class="arch">O Ferreiro</div>
+        <div class="pill-badge">Martelo Pesado de Forja</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#334155"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#1e293b"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#0f172a"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#334155"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#1e293b"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#0f172a"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#0f172a"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#020617"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#000000"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#0f172a"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#020617"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#000000"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#9a3412"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#78350f"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#451a03"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><polygon points="35.4,38.9 43.5,42.9 40,44.7 31.8,40.6" fill="#ea580c"/><polygon points="31.8,44.9 40,49 40,44.7 31.8,40.6" fill="#c2410c"/><polygon points="43.5,47.2 40,49 40,44.7 43.5,42.9" fill="#9a3412"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/>
+        <line x1="34" y1="46" x2="28" y2="54" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="28" cy="54" r="2" fill="#fbcfe8"/>
+        <line x1="28" y1="54" x2="22" y2="58" stroke="#1e293b" stroke-width="1.8"/>
+        <polygon points="18,59 23,61.5 22,63 17,60.5" fill="#ea580c"/>
+        <line x1="18" y1="59.5" x2="22" y2="61.5" stroke="#fef08a" stroke-width="1.5"/>
+
+        <polygon points="14,64 24,69 24,74 14,69" fill="#1e293b"/>
+        <polygon points="24,69 30,66 30,71 24,74" fill="#0f172a"/>
+        <polygon points="14,64 24,69 30,66 20,61" fill="#475569"/>
+        <polygon points="14,64 10,63 14,65" fill="#64748b"/>
+
+        <line x1="46" y1="46" x2="44" y2="48" stroke="#78350f" stroke-width="3.2" stroke-linecap="round"/>
+        <circle cx="44" cy="48" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-pickaxe" style="transform-origin:44px 48px">
+          <!-- Cabo declive +0.5000: de (44,48) a (26,39) [dx=-18, dy=-9] -->
+          <line x1="44" y1="48" x2="26" y2="39" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <polygon points="26,36 29,37.5 29,43 26,41.5" fill="#cbd5e1"/>
+          <polygon points="29,37.5 32,36 32,41.5 29,43" fill="#64748b"/>
+          <polygon points="26,36 29,37.5 32,36 29,34.5" fill="#f8fafc"/>
+        </g>
+        <circle cx="20" cy="58" r="1.5" fill="#fef08a" class="anim-sparks"/>
+        <circle cx="22" cy="55" r="1.2" fill="#f97316" class="anim-sparks"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#334155"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#1e293b"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#0f172a"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#334155"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#1e293b"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#0f172a"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#0f172a"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#020617"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#000000"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#0f172a"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#020617"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#000000"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#9a3412"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#78350f"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#451a03"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><polygon points="40,36.6 43.5,38.3 35.4,42.4 31.8,40.6" fill="#ea580c"/><polygon points="43.5,42.6 35.4,46.7 35.4,42.4 43.5,38.3" fill="#c2410c"/><polygon points="31.8,44.9 35.4,46.7 35.4,42.4 31.8,40.6" fill="#9a3412"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/>
+        <line x1="46" y1="46" x2="52" y2="54" stroke="#78350f" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="52" cy="54" r="2" fill="#fbcfe8"/>
+        <line x1="52" y1="54" x2="58" y2="58" stroke="#1e293b" stroke-width="1.8"/>
+        <polygon points="62,59 57,61.5 58,63 63,60.5" fill="#ea580c"/>
+        <line x1="62" y1="59.5" x2="58" y2="61.5" stroke="#fef08a" stroke-width="1.5"/>
+
+        <polygon points="66,64 56,69 56,74 66,69" fill="#1e293b"/>
+        <polygon points="56,69 50,66 50,71 56,74" fill="#0f172a"/>
+        <polygon points="66,64 56,69 50,66 60,61" fill="#475569"/>
+        <polygon points="66,64 70,63 66,65" fill="#64748b"/>
+
+        <line x1="34" y1="46" x2="36" y2="48" stroke="#78350f" stroke-width="3.2" stroke-linecap="round"/>
+        <circle cx="36" cy="48" r="2.2" fill="#fbcfe8"/>
+
+        <g class="anim-physics-pickaxe" style="transform-origin:36px 48px">
+          <line x1="36" y1="48" x2="54" y2="39" stroke="#78350f" stroke-width="2.5" stroke-linecap="round"/>
+          <polygon points="54,36 51,37.5 51,43 54,41.5" fill="#cbd5e1"/>
+          <polygon points="51,37.5 48,36 48,41.5 51,43" fill="#64748b"/>
+          <polygon points="54,36 51,37.5 48,36 51,34.5" fill="#f8fafc"/>
+        </g>
+        <circle cx="60" cy="58" r="1.5" fill="#fef08a" class="anim-sparks"/>
+        <circle cx="58" cy="55" r="1.2" fill="#f97316" class="anim-sparks"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#334155"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#0f172a"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#0f172a"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#334155"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#0f172a"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#0f172a"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#0f172a"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#000000"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#000000"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#0f172a"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#000000"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#000000"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#9a3412"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#451a03"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#451a03"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ea580c"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#9a3412"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#9a3412"/>
+        <line x1="35" y1="46" x2="30" y2="52" stroke="#451a03" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="30" cy="52" r="2" fill="#fbcfe8"/>
+        <line x1="30" y1="52" x2="22" y2="44" stroke="#78350f" stroke-width="2.5"/>
+        <rect x="20" y="42" width="5" height="4" fill="#94a3b8"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#334155"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#0f172a"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#0f172a"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#334155"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#0f172a"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#0f172a"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#0f172a"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#000000"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#000000"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#0f172a"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#000000"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#000000"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#9a3412"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#451a03"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#451a03"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ea580c"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#9a3412"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#9a3412"/>
+        <line x1="45" y1="46" x2="50" y2="52" stroke="#451a03" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="50" cy="52" r="2" fill="#fbcfe8"/>
+        <line x1="50" y1="52" x2="58" y2="44" stroke="#78350f" stroke-width="2.5"/>
+        <rect x="56" y="42" width="5" height="4" fill="#94a3b8"/>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Molda barras em brasa sobre a bigorna. Avental grosso de couro com tiras cruzadas, tenaz segurando ferro rubro e martelo pesado volumétrico com faíscas incandescentes.</div>
+    </div>
+  
+
+    <div class="card char-card" data-char="pescador">
+      <div class="char-header">
+        <div class="era">PESCA & NAVEGAÇÃO FLUVIAL</div>
+        <div class="arch">O Pescador</div>
+        <div class="pill-badge">Vara de Bambu & Bóia</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#0369a1"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#0284c7"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#075985"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#0369a1"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#0284c7"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#075985"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#334155"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#1e293b"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#0f172a"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#334155"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#1e293b"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#0f172a"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#0284c7"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#0369a1"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#075985"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><polygon points="35.4,38.9 43.5,42.9 40,44.7 31.8,40.6" fill="#64748b"/><polygon points="31.8,44.9 40,49 40,44.7 31.8,40.6" fill="#475569"/><polygon points="43.5,47.2 40,49 40,44.7 43.5,42.9" fill="#334155"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#eab308"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/>
+        <line x1="46" y1="46" x2="42" y2="53" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="42" cy="53" r="2" fill="#fbcfe8"/>
+        <line x1="34" y1="46" x2="36" y2="51" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="36" cy="51" r="2" fill="#fbcfe8"/>
+
+        <g class="anim-rod-flex" style="transform-origin:42px 53px">
+          <path d="M 45,56 Q 32,46 14,32" fill="none" stroke="#d97706" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="38" cy="50" r="1.2" fill="#78350f"/>
+          <circle cx="28" cy="43" r="1.2" fill="#78350f"/>
+          <circle cx="20" cy="37" r="1" fill="#78350f"/>
+        </g>
+        <g class="anim-bobber-dip">
+          <line x1="14" y1="32" x2="14" y2="68" stroke="#e0f2fe" stroke-width="1" stroke-dasharray="3 1.5"/>
+          <ellipse cx="14" cy="67" rx="2.5" ry="3" fill="#ef4444"/>
+          <ellipse cx="14" cy="69" rx="2.5" ry="1.4" fill="#f8fafc"/>
+          <!-- Proporção 2:1 exata (rx=6, ry=3) -->
+          <ellipse cx="14" cy="71" rx="6" ry="3" fill="none" stroke="#38bdf8" stroke-width="1" class="anim-water-flow"/>
+        </g>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#0369a1"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#0284c7"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#075985"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#0369a1"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#0284c7"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#075985"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#334155"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#1e293b"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#0f172a"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#334155"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#1e293b"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#0f172a"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#0284c7"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#0369a1"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#075985"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><polygon points="40,36.6 43.5,38.3 35.4,42.4 31.8,40.6" fill="#64748b"/><polygon points="43.5,42.6 35.4,46.7 35.4,42.4 43.5,38.3" fill="#475569"/><polygon points="31.8,44.9 35.4,46.7 35.4,42.4 31.8,40.6" fill="#334155"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#eab308"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/>
+        <line x1="34" y1="46" x2="38" y2="53" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="38" cy="53" r="2" fill="#fbcfe8"/>
+        <line x1="46" y1="46" x2="44" y2="51" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="44" cy="51" r="2" fill="#fbcfe8"/>
+
+        <g class="anim-rod-flex" style="transform-origin:38px 53px">
+          <path d="M 35,56 Q 48,46 66,32" fill="none" stroke="#d97706" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="42" cy="50" r="1.2" fill="#78350f"/>
+          <circle cx="52" cy="43" r="1.2" fill="#78350f"/>
+          <circle cx="60" cy="37" r="1" fill="#78350f"/>
+        </g>
+        <g class="anim-bobber-dip">
+          <line x1="66" y1="32" x2="66" y2="68" stroke="#e0f2fe" stroke-width="1" stroke-dasharray="3 1.5"/>
+          <ellipse cx="66" cy="67" rx="2.5" ry="3" fill="#ef4444"/>
+          <ellipse cx="66" cy="69" rx="2.5" ry="1.4" fill="#f8fafc"/>
+          <ellipse cx="66" cy="71" rx="6" ry="3" fill="none" stroke="#38bdf8" stroke-width="1" class="anim-water-flow"/>
+        </g>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#0369a1"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#075985"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#075985"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#0369a1"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#075985"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#075985"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#334155"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#0f172a"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#0f172a"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#334155"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#0f172a"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#0f172a"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#0284c7"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#075985"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#075985"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#334155"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#0f172a"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/>
+        <line x1="35" y1="46" x2="32" y2="52" stroke="#075985" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="32" cy="52" r="1.8" fill="#fbcfe8"/>
+        <path d="M 36,54 Q 28,44 16,30" fill="none" stroke="#d97706" stroke-width="2"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#0369a1"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#075985"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#075985"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#0369a1"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#075985"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#075985"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#334155"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#0f172a"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#0f172a"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#334155"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#0f172a"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#0f172a"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#0284c7"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#075985"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#075985"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#334155"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#0f172a"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#0f172a"/><polygon points="40,27.8 49.8,32.7 40,37.6 30.2,32.7" fill="#fde047"/><polygon points="49.8,37 40,41.9 40,37.6 49.8,32.7" fill="#ca8a04"/><polygon points="30.2,37 40,41.9 40,37.6 30.2,32.7" fill="#ca8a04"/>
+        <line x1="45" y1="46" x2="48" y2="52" stroke="#075985" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="48" cy="52" r="1.8" fill="#fbcfe8"/>
+        <path d="M 44,54 Q 52,44 64,30" fill="none" stroke="#d97706" stroke-width="2"/>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Pesca nos remansos e estuários do rio. Vara flexível sob tensão elástica, bóia flutuante sensível e ondulações dimétricas 2:1 na superfície.</div>
+    </div>
+  
+
+    <div class="card char-card" data-char="sabio">
+      <div class="char-header">
+        <div class="era">CIÊNCIA / INSTITUIÇÕES</div>
+        <div class="arch">O Sábio de Jacobi</div>
+        <div class="pill-badge">Astrolábio & Tábuas Elípticas</div>
+      </div>
+      <div class="angles-row">
+        <div class="angle-box angle-sw">
+          <div class="angle-label">↙ FRENTE-ESQ (SW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#312e81"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#1e1b4b"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#0f0d2b"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#312e81"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#1e1b4b"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#0f0d2b"/><polygon points="37.8,60.8 41.6,62.7 36.2,65.4 32.4,63.5" fill="#1e1b4b"/><polygon points="32.4,67.2 36.2,69.1 36.2,65.4 32.4,63.5" fill="#0f0d2b"/><polygon points="41.6,66.4 36.2,69.1 36.2,65.4 41.6,62.7" fill="#050414"/><polygon points="43.3,63.5 47.1,65.4 41.6,68.2 37.8,66.3" fill="#1e1b4b"/><polygon points="37.8,69.9 41.6,71.8 41.6,68.2 37.8,66.3" fill="#0f0d2b"/><polygon points="47.1,69.1 41.6,71.8 41.6,68.2 47.1,65.4" fill="#050414"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#4338ca"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#3730a3"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#1e1b4b"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#451a03"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="35.6,55.4 37.8,56.5 37.3,56.8 35.1,55.7" fill="#fde047"/><polygon points="35.1,56.9 37.3,58 37.3,56.8 35.1,55.7" fill="#f59e0b"/><polygon points="37.8,57.7 37.3,58 37.3,56.8 37.8,56.5" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#fbcfe8"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#f472b6"/><polygon points="35.4,38.9 43.5,42.9 40,44.7 31.8,40.6" fill="#ffffff"/><polygon points="31.8,44.9 40,49 40,44.7 31.8,40.6" fill="#f8fafc"/><polygon points="43.5,47.2 40,49 40,44.7 43.5,42.9" fill="#cbd5e1"/><circle cx="37.3" cy="41.9" r="1.2" fill="#0f172a"/>
+        <line x1="46" y1="46" x2="42" y2="54" stroke="#312e81" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="42" cy="54" r="2" fill="#fbcfe8"/>
+        <rect x="41" y="52" width="6" height="3" rx="1.5" fill="#fef08a" stroke="#ca8a04" stroke-width="0.8"/>
+
+        <line x1="34" y1="46" x2="34" y2="51" stroke="#312e81" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="34" cy="51" r="2" fill="#fbcfe8"/>
+
+        <g class="anim-astrolabe-spin" style="transform-origin:34px 58px">
+          <circle cx="34" cy="53" r="1.5" fill="none" stroke="#facc15" stroke-width="1"/>
+          <circle cx="34" cy="58" r="5" fill="#ca8a04" stroke="#facc15" stroke-width="1.2"/>
+          <circle cx="34" cy="58" r="3.2" fill="#713f12"/>
+          <line x1="30" y1="30" x2="38" y2="38" stroke="#fef08a" stroke-width="1.2"/>
+          <circle cx="34" cy="58" r="1" fill="#fef08a"/>
+        </g>
+        <circle cx="34" cy="56" r="1.2" fill="#fef08a" class="anim-glow-pulse"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-se">
+          <div class="angle-label">↘ FRENTE-DIR (SE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#312e81"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#1e1b4b"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#0f0d2b"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#312e81"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#1e1b4b"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#0f0d2b"/><polygon points="41.6,60.5 47.1,63.3 43.3,65.2 37.8,62.4" fill="#1e1b4b"/><polygon points="47.1,66.9 43.3,68.8 43.3,65.2 47.1,63.3" fill="#0f0d2b"/><polygon points="37.8,66.1 43.3,68.8 43.3,65.2 37.8,62.4" fill="#050414"/><polygon points="36.2,63.3 41.6,66 37.8,67.9 32.4,65.2" fill="#1e1b4b"/><polygon points="41.6,69.6 37.8,71.5 37.8,67.9 41.6,66" fill="#0f0d2b"/><polygon points="32.4,68.8 37.8,71.5 37.8,67.9 32.4,65.2" fill="#050414"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#4338ca"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#3730a3"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#1e1b4b"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#451a03"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="37.3,51.9 37.8,52.1 35.6,53.2 35.1,53" fill="#fde047"/><polygon points="37.8,53.4 35.6,54.4 35.6,53.2 37.8,52.1" fill="#f59e0b"/><polygon points="35.1,54.2 35.6,54.4 35.6,53.2 35.1,53" fill="#d97706"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#fce7f3"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#fbcfe8"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#f472b6"/><polygon points="40,36.6 43.5,38.3 35.4,42.4 31.8,40.6" fill="#ffffff"/><polygon points="43.5,42.6 35.4,46.7 35.4,42.4 43.5,38.3" fill="#f8fafc"/><polygon points="31.8,44.9 35.4,46.7 35.4,42.4 31.8,40.6" fill="#cbd5e1"/><circle cx="35.1" cy="40.8" r="1.2" fill="#0f172a"/>
+        <line x1="34" y1="46" x2="38" y2="54" stroke="#312e81" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="38" cy="54" r="2" fill="#fbcfe8"/>
+        <rect x="35" y="52" width="6" height="3" rx="1.5" fill="#fef08a" stroke="#ca8a04" stroke-width="0.8"/>
+
+        <line x1="46" y1="46" x2="46" y2="51" stroke="#312e81" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="46" cy="51" r="2" fill="#fbcfe8"/>
+
+        <g class="anim-astrolabe-spin" style="transform-origin:46px 58px">
+          <circle cx="46" cy="53" r="1.5" fill="none" stroke="#facc15" stroke-width="1"/>
+          <circle cx="46" cy="58" r="5" fill="#ca8a04" stroke="#facc15" stroke-width="1.2"/>
+          <circle cx="46" cy="58" r="3.2" fill="#713f12"/>
+          <line x1="42" y1="42" x2="50" y2="50" stroke="#fef08a" stroke-width="1.2"/>
+          <circle cx="46" cy="58" r="1" fill="#fef08a"/>
+        </g>
+        <circle cx="46" cy="56" r="1.2" fill="#fef08a" class="anim-glow-pulse"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-nw">
+          <div class="angle-label">↖ TRÁS-ESQ (NW)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="36.7,55.3 41.1,57.5 37.8,59.1 33.5,56.9" fill="#312e81"/><polygon points="33.5,69.1 37.8,71.3 37.8,59.1 33.5,56.9" fill="#0f0d2b"/><polygon points="41.1,69.6 37.8,71.3 37.8,59.1 41.1,57.5" fill="#0f0d2b"/><polygon points="42.2,52.6 46.5,54.7 43.3,56.4 38.9,54.2" fill="#312e81"/><polygon points="38.9,66.4 43.3,68.5 43.3,56.4 38.9,54.2" fill="#0f0d2b"/><polygon points="46.5,66.9 43.3,68.5 43.3,56.4 46.5,54.7" fill="#0f0d2b"/><polygon points="36.7,63.5 42.2,66.3 38.4,68.2 32.9,65.4" fill="#1e1b4b"/><polygon points="32.9,69.1 38.4,71.8 38.4,68.2 32.9,65.4" fill="#050414"/><polygon points="42.2,69.9 38.4,71.8 38.4,68.2 42.2,66.3" fill="#050414"/><polygon points="42.2,60.8 47.6,63.5 43.8,65.4 38.4,62.7" fill="#1e1b4b"/><polygon points="38.4,66.4 43.8,69.1 43.8,65.4 38.4,62.7" fill="#050414"/><polygon points="47.6,67.2 43.8,69.1 43.8,65.4 47.6,63.5" fill="#050414"/><polygon points="42.2,39.9 48.7,43.2 37.8,48.6 31.3,45.4" fill="#4338ca"/><polygon points="31.3,56.9 37.8,60.2 37.8,48.6 31.3,45.4" fill="#1e1b4b"/><polygon points="48.7,54.7 37.8,60.2 37.8,48.6 48.7,43.2" fill="#1e1b4b"/><polygon points="42.2,49.4 49.2,52.9 37.8,58.6 30.8,55.1" fill="#78350f"/><polygon points="30.8,56.9 37.8,60.5 37.8,58.6 30.8,55.1" fill="#2e1102"/><polygon points="49.2,54.7 37.8,60.5 37.8,58.6 49.2,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ffffff"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#cbd5e1"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#cbd5e1"/>
+        <line x1="35" y1="46" x2="30" y2="52" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="30" cy="52" r="1.8" fill="#fbcfe8"/>
+        <circle cx="28" cy="56" r="4" fill="#ca8a04" stroke="#facc15" stroke-width="1"/>
+      </svg></div>
+        </div>
+        <div class="angle-box angle-ne">
+          <div class="angle-label">↗ TRÁS-DIR (NE)</div>
+          <div class="angle-scene"><svg viewBox="0 0 80 80" width="80" height="80" shape-rendering="crispEdges"><ellipse cx="40" cy="68" rx="10.6" ry="5.3" fill="#000" opacity="0.45"/><polygon points="43.3,55.3 46.5,56.9 42.2,59.1 38.9,57.5" fill="#312e81"/><polygon points="46.5,69.1 42.2,71.3 42.2,59.1 46.5,56.9" fill="#0f0d2b"/><polygon points="38.9,69.6 42.2,71.3 42.2,59.1 38.9,57.5" fill="#0f0d2b"/><polygon points="37.8,52.6 41.1,54.2 36.7,56.4 33.5,54.7" fill="#312e81"/><polygon points="41.1,66.4 36.7,68.5 36.7,56.4 41.1,54.2" fill="#0f0d2b"/><polygon points="33.5,66.9 36.7,68.5 36.7,56.4 33.5,54.7" fill="#0f0d2b"/><polygon points="43.8,63.3 47.6,65.2 42.2,67.9 38.4,66" fill="#1e1b4b"/><polygon points="47.6,68.8 42.2,71.5 42.2,67.9 47.6,65.2" fill="#050414"/><polygon points="38.4,69.6 42.2,71.5 42.2,67.9 38.4,66" fill="#050414"/><polygon points="38.4,60.5 42.2,62.4 36.7,65.2 32.9,63.3" fill="#1e1b4b"/><polygon points="42.2,66.1 36.7,68.8 36.7,65.2 42.2,62.4" fill="#050414"/><polygon points="32.9,66.9 36.7,68.8 36.7,65.2 32.9,63.3" fill="#050414"/><polygon points="37.8,39.9 48.7,45.4 42.2,48.6 31.3,43.2" fill="#4338ca"/><polygon points="48.7,56.9 42.2,60.2 42.2,48.6 48.7,45.4" fill="#1e1b4b"/><polygon points="31.3,54.7 42.2,60.2 42.2,48.6 31.3,43.2" fill="#1e1b4b"/><polygon points="37.8,49.4 49.2,55.1 42.2,58.6 30.8,52.9" fill="#78350f"/><polygon points="49.2,56.9 42.2,60.5 42.2,58.6 49.2,55.1" fill="#2e1102"/><polygon points="30.8,54.7 42.2,60.5 42.2,58.6 30.8,52.9" fill="#2e1102"/><polygon points="40,32 47.6,35.8 40,39.6 32.4,35.8" fill="#ffffff"/><polygon points="47.6,44.3 40,48.1 40,39.6 47.6,35.8" fill="#cbd5e1"/><polygon points="32.4,44.3 40,48.1 40,39.6 32.4,35.8" fill="#cbd5e1"/>
+        <line x1="45" y1="46" x2="50" y2="52" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="50" cy="52" r="1.8" fill="#fbcfe8"/>
+        <circle cx="52" cy="56" r="4" fill="#ca8a04" stroke="#facc15" stroke-width="1"/>
+      </svg></div>
+        </div>
+      </div>
+      <div class="desc" style="margin-top:10px;">Estuda o pêndulo e as funções elípticas. Túnica azul-noite com diagrama bordado, pergaminho de fórmulas e astrolábio giratório de latão.</div>
+    </div>
+  
+  </div>
+</div>
+
+<!-- ABA 2: ROCHAS, ÁRVORES & NATUREZA -->
+<div id="tab-nature" class="tab-content">
+  <div class="biome-section-title">1. TIPOS DE PEDRAS REAIS & RELEVO (PLANOS DE CLIVAGEM, ESTRATOS E TEXTURA MINERAL)</div>
+  <div class="grid">
+    
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <!-- Sombra de contato no solo: elipse 2:1 exata com oclusão profunda -->
+      <ellipse cx="60" cy="86" rx="18.7" ry="9.4" fill="#0f172a" opacity="0.5"/>
+      <ellipse cx="60" cy="86" rx="13.089999999999998" ry="6.58" fill="#020617" opacity="0.4"/>
+
+      <!-- Poliedro de 7 facetas geológicas nos eixos do sistema -->
+      <polygon points="30.6,78.5 43.2,91.9 47,82.4 39.4,65.4" fill="#64748b"/>
+      <polygon points="43.2,91.9 64.7,96.7 69.4,82.8 47,82.4" fill="#475569"/>
+      <polygon points="39.4,65.4 47,82.4 60,60.6 56.2,57.9" fill="#94a3b8"/>
+      <polygon points="47,82.4 69.4,82.8 73,66.1 60,60.6" fill="#64748b"/>
+      <polygon points="56.2,57.9 60,60.6 73,66.1 70.3,61" fill="#cbd5e1"/>
+
+      <!-- Textura fanerítica mineral (feldspato, quartzo, biotita) -->
+      <circle cx="52" cy="66" r="1.4" fill="#f8fafc"/>
+      <circle cx="66" cy="70" r="1.2" fill="#d4b48a"/>
+      <circle cx="46" cy="76" r="1.5" fill="#1e293b"/>
+      <circle cx="72" cy="78" r="1.4" fill="#1e293b"/>
+      <circle cx="58" cy="58" r="1.3" fill="#f8fafc"/>
+      <circle cx="64" cy="62" r="1.2" fill="#d4b48a"/>
+      <circle cx="42" cy="84" r="1.3" fill="#f8fafc"/>
+      <circle cx="76" cy="86" r="1.4" fill="#334155"/>
+
+      <!-- Fendas de clivagem nos declives do sistema -->
+      <line x1="60" y1="60.6" x2="47" y2="82.4" stroke="#1e293b" stroke-width="1.5"/>
+      <line x1="47" y1="82.4" x2="43.2" y2="91.9" stroke="#1e293b" stroke-width="1.5"/>
+      <line x1="56.2" y1="57.9" x2="39.4" y2="65.4" stroke="#334155" stroke-width="1"/>
+
+      <!-- Líquens crostosos nas fendas e tufos na base (ancorando a pedra ao chão) -->
+      <ellipse cx="49.4" cy="69.4" rx="6" ry="3" fill="#65a30d" opacity="0.85"/>
+      <ellipse cx="51.4" cy="68.4" rx="3.5" ry="1.8" fill="#a3e635" opacity="0.9"/>
+      <ellipse cx="55" cy="88.4" rx="5" ry="2.5" fill="#3f6212" opacity="0.85"/>
+
+      <!-- Tufos de musgo na base que cobrem o chão para eliminar a sensação de flutuar -->
+      <ellipse cx="34.6" cy="79.5" rx="6" ry="3" fill="#3f6212"/>
+      <circle cx="39.2" cy="92.9" r="2.5" fill="#65a30d"/>
+      <ellipse cx="62.7" cy="97.7" rx="5" ry="2.5" fill="#3f6212"/>
+    </svg></div>
+    <div class="era">GEOLOGIA / GRANITO ERRÁTICO</div>
+    <div class="arch">Pedregulho de Campo</div>
+    <div class="desc">Bloco facetado com 7 planos geológicos, textura fanerítica mineral pontilhada, oclusão basal escura e musgo de ancoragem ao solo.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="86" rx="19.3" ry="9.7" fill="#000" opacity="0.45"/>
+      <polygon points="52.5,49.4 70.4,58.3 46.2,70.4 28.3,61.5" fill="#475569"/><polygon points="28.3,78.3 46.2,87.2 46.2,70.4 28.3,61.5" fill="#334155"/><polygon points="70.4,75.1 46.2,87.2 46.2,70.4 70.4,58.3" fill="#1e293b"/>
+      <polygon points="73.8,62 91.7,70.9 67.5,83 49.6,74.1" fill="#334155"/><polygon points="49.6,88.9 67.5,97.8 67.5,83 49.6,74.1" fill="#1e293b"/><polygon points="91.7,85.7 67.5,97.8 67.5,83 91.7,70.9" fill="#0f172a"/>
+
+      <!-- Veio hidrotermal de Calcopirita & Malaquita -->
+      <polygon points="54.3,64.4 64.3,62.400000000000006 58.8,88.3 44.8,90.3" fill="#b45309"/>
+      <polygon points="56.3,65.4 62.3,63.400000000000006 55.8,88.3 47.8,89.3" fill="#f59e0b"/>
+      <polygon points="58.3,66.4 61.3,64.4 53.8,88.3 49.8,89.3" fill="#fde047"/>
+
+      <!-- Eflorescência de Malaquita verde oxidada -->
+      <path d="M 51.3,72.4 Q 56.3,80.4 42.8,82.3" stroke="#059669" stroke-width="2.5" fill="none"/>
+      <path d="M 66.3,74.4 Q 62.3,82.4 60.8,84.3" stroke="#10b981" stroke-width="2" fill="none"/>
+
+      <!-- Cristais metálicos cintilando (Animados!) -->
+      <g class="anim-sparkle-ore">
+        <polygon points="60,68 57,72 63,72" fill="#ffffff"/>
+        <polygon points="72,78 69,82 75,82" fill="#fef08a"/>
+        <polygon points="52,76 49,80 55,80" fill="#ffffff"/>
+        <circle cx="62" cy="74" r="1.5" fill="#ffffff"/>
+      </g>
+    </svg></div>
+    <div class="era">METALURGIA / DIABÁSIO & COBRE</div>
+    <div class="arch">Rocha com Veio Mineral</div>
+    <div class="desc">Diáclase profunda em rocha máfica com filão de calcopirita cintilante, eflorescência verde de malaquita oxidada e inclusões metálicas.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="84" rx="18.9" ry="9.5" fill="#000" opacity="0.45"/>
+      <polygon points="51.6,53.2 85.3,70.1 68.4,78.5 34.7,61.6" fill="#cbd5e1"/><polygon points="34.7,75.8 68.4,92.7 68.4,78.5 34.7,61.6" fill="#94a3b8"/><polygon points="85.3,84.2 68.4,92.7 68.4,78.5 85.3,70.1" fill="#64748b"/>
+
+      <!-- Arrisca perimetral rebaixada (Drafted Margin) -->
+      <polygon points="29,87.9 60,103.4 60,82.9 29,67.4" fill="#a0aec0" stroke="#475569" stroke-width="0.8"/>
+
+      <!-- Estrias de picão e dente de cantaria -->
+      <line x1="42" y1="76" x2="52" y2="71" stroke="#64748b" stroke-width="1"/>
+      <line x1="48" y1="79" x2="58" y2="74" stroke="#64748b" stroke-width="1"/>
+      <line x1="54" y1="82" x2="64" y2="77" stroke="#64748b" stroke-width="1"/>
+      <line x1="60" y1="85" x2="70" y2="80" stroke="#64748b" stroke-width="1"/>
+
+      <!-- Lasca de impacto na quina (Corner Spall) -->
+      <polygon points="68.4,78.5 66.2,77.4 70.7,77.4" fill="#475569"/>
+
+      <!-- Ferramentas de canteiro: Ponteiro e Maço de madeira -->
+      <line x1="86" y1="92" x2="76" y2="84" stroke="#475569" stroke-width="2"/>
+      <circle cx="75" cy="83" r="1.5" fill="#cbd5e1"/>
+      <polygon points="32,90 40,94 38,88 30,84" fill="#78350f"/>
+    </svg></div>
+    <div class="era">CONSTRUÇÃO / UNIDADE S = 35.78</div>
+    <div class="arch">Bloco de Cantaria Talhado</div>
+    <div class="desc">Bloco canônico de calcário aparelhada: arrisca perimetral rebaixada, estrias de picão em 2:1, orifícios de cunha e maço de cantaria.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="90" rx="19.9" ry="10" fill="#000" opacity="0.45"/>
+      <polygon points="51.6,59.5 91,79.2 68.4,90.5 29,70.8" fill="#64748b"/><polygon points="29,81.8 68.4,101.5 68.4,90.5 29,70.8" fill="#475569"/><polygon points="91,90.2 68.4,101.5 68.4,90.5 91,79.2" fill="#334155"/>
+      <polygon points="54.4,52.7 82.5,66.8 65.6,75.2 37.5,61.1" fill="#94a3b8"/><polygon points="37.5,72.2 65.6,86.2 65.6,75.2 37.5,61.1" fill="#64748b"/><polygon points="82.5,77.8 65.6,86.2 65.6,75.2 82.5,66.8" fill="#475569"/>
+      <polygon points="57.2,45.9 74.1,54.3 62.8,60 45.9,51.5" fill="#cbd5e1"/><polygon points="45.9,62.6 62.8,71 62.8,60 45.9,51.5" fill="#94a3b8"/><polygon points="74.1,65.4 62.8,71 62.8,60 74.1,54.3" fill="#64748b"/>
+
+      <!-- Estratos e juntas de descompressão horizontal -->
+      <line x1="29" y1="76.1" x2="68.4" y2="95.8" stroke="#1e293b" stroke-width="1.5"/>
+      <line x1="37.5" y1="66.8" x2="65.6" y2="80.9" stroke="#1e293b" stroke-width="1.5"/>
+
+      <!-- Tálus de cascalho no sopé -->
+      <ellipse cx="36" cy="92" rx="5" ry="2.5" fill="#475569"/>
+      <ellipse cx="44" cy="95" rx="4" ry="2" fill="#64748b"/>
+      <ellipse cx="78" cy="94" rx="6" ry="3" fill="#334155"/>
+      <ellipse cx="88" cy="91" rx="4" ry="2" fill="#475569"/>
+    </svg></div>
+    <div class="era">GEOMORFOLOGIA / FALHA TECTÔNICA</div>
+    <div class="arch">Escarpa & Falésia de Granito</div>
+    <div class="desc">Degraus estratificados com desníveis em múltiplos de S, estratos geológicos horizontais, manchas ferruginosas e cone de tálus no sopé.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="94" rx="19.9" ry="10" fill="#000" opacity="0.45"/>
+      <!-- Face sombreada em azul gélido -->
+      <polygon points="60,44.3 38.9,79.4 60,97" fill="#334155"/>
+      <!-- Face iluminada com neve perpétua -->
+      <polygon points="60,44.3 60,97 38.9,100.6" fill="#1e293b"/>
+      <!-- Manto de neve a barlavento -->
+      <polygon points="60,44.3 74,78.3 54,82.3 44,70.3" fill="#f8fafc"/>
+      <polygon points="60,44.3 44,70.3 50,76.3 60,62.3" fill="#93c5fd"/>
+      <!-- Crista de arête afiada -->
+      <line x1="60" y1="44.3" x2="60" y2="97" stroke="#ffffff" stroke-width="1.8"/>
+      <!-- Sastrugi de vento no cume -->
+      <line x1="52" y1="58.3" x2="66" y2="65.3" stroke="#ffffff" stroke-width="1"/>
+      <line x1="48" y1="66.3" x2="62" y2="73.3" stroke="#ffffff" stroke-width="1"/>
+    </svg></div>
+    <div class="era">ALTA MONTANHA / ARÊTE GLACIAL</div>
+    <div class="arch">Pico Nevado de Oikos</div>
+    <div class="desc">Cume piramidal alpino: crista afiada separando o manto de gelo e sastrugi a barlavento dos couloirs em ardósia a sotavento.</div>
+  </div>
+
+  </div>
+
+  <div class="biome-section-title">2. TIPOS DE ÁRVORES & FLORA (GEOMETRIA DE REVOLUÇÃO EM 2:1 E TEXTURAS)</div>
+  <div class="grid">
+    
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <!-- Sombra no solo: elipse rx = 2*ry exata -->
+      <ellipse cx="60" cy="92" rx="20" ry="10" fill="#000" opacity="0.45"/>
+      <ellipse cx="60" cy="92" rx="12" ry="6" fill="#000" opacity="0.3"/>
+
+      <!-- Tronco afunilando: base 7px, topo 4.5px (65%) -->
+      <polygon points="56.5,92 63.5,92 62.2,66 57.8,66" fill="#451a03"/>
+      <polygon points="59.5,92 63.5,92 62.2,66 60.5,66" fill="#2e1102"/>
+      <line x1="60" y1="90" x2="60" y2="68" stroke="#78350f" stroke-width="1"/>
+
+      <!-- Andar 1 (Base): Prisma dimétrico volumétrico -->
+      <polygon points="32,70 60,56 88,70 60,84" fill="#022c22"/>
+      <polygon points="32,70 60,84 60,62 36,58" fill="#065f46"/>
+      <polygon points="60,84 88,70 84,58 60,62" fill="#064e3b"/>
+      <polygon points="36,58 60,62 84,58 60,48" fill="#047857"/>
+
+      <!-- Andar 2 (Meio): Prisma intermediário -->
+      <polygon points="38,52 60,40 82,52 60,64" fill="#022c22"/>
+      <polygon points="38,52 60,64 60,46 42,42" fill="#065f46"/>
+      <polygon points="60,64 82,52 78,42 60,46" fill="#064e3b"/>
+      <polygon points="42,42 60,46 78,42 60,34" fill="#059669"/>
+
+      <!-- Andar 3 (Cúpula): Topo com ancoragem na base -->
+      <g class="anim-tree-sway">
+        <polygon points="46,36 60,26 74,36 60,46" fill="#022c22"/>
+        <polygon points="46,36 60,46 60,22 52,18" fill="#059669"/>
+        <polygon points="60,46 74,36 68,18 60,22" fill="#064e3b"/>
+        <polygon points="52,18 60,22 68,18 60,10" fill="#10b981"/>
+        <circle cx="60" cy="10" r="1.5" fill="#6ee7b7"/>
+      </g>
+    </svg></div>
+    <div class="era">FLORA / CONÍFERA TEMPERADA</div>
+    <div class="arch">Pinheiro da Serra</div>
+    <div class="desc">Cone escalonado em 3 andares de prismas dimétricos volumétricos com topo losangular 2:1, tronco cônico e sombra elíptica canônica.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="90" rx="19.3" ry="9.7" fill="#000" opacity="0.45"/>
+      <!-- Raízes tabulares e tronco nodoso -->
+      <polygon points="48,90 56,70 64,70 72,90" fill="#2e1102"/>
+      <polygon points="54,90 57,70 63,70 66,90" fill="#451a03"/>
+      <line x1="58" y1="90" x2="59" y2="72" stroke="#78350f" stroke-width="1"/>
+
+      <!-- Copas volumosas em nuvens de folhas com oclusão -->
+      <g class="anim-sway-cap" style="transform-origin:60px 68px">
+        <!-- Nuvem Fundo/Sombra -->
+        <circle cx="44" cy="50" r="18" fill="#14532d"/>
+        <circle cx="76" cy="50" r="18" fill="#14532d"/>
+        <circle cx="60" cy="36" r="22" fill="#166534"/>
+
+        <!-- Nuvem Corpo/Meio-tom -->
+        <circle cx="46" cy="46" r="16" fill="#15803d"/>
+        <circle cx="74" cy="46" r="16" fill="#15803d"/>
+        <circle cx="60" cy="32" r="20" fill="#16a34a"/>
+
+        <!-- Nuvem Realces/Luz -->
+        <circle cx="48" cy="42" r="12" fill="#22c55e"/>
+        <circle cx="72" cy="42" r="12" fill="#22c55e"/>
+        <circle cx="60" cy="28" r="15" fill="#4ade80"/>
+
+        <!-- Dapple light pontilhado -->
+        <circle cx="54" cy="24" r="3" fill="#86efac"/>
+        <circle cx="68" cy="30" r="3.5" fill="#86efac"/>
+        <circle cx="60" cy="40" r="2.5" fill="#86efac"/>
+      </g>
+    </svg></div>
+    <div class="era">FLORA / DECÍDUA FRONDOSA</div>
+    <div class="arch">Carvalho Ancestral</div>
+    <div class="desc">Copa de revolução construída por elipses horizontais com proporção estrita rx = 2·ry, raízes tabulares e galhos estruturais.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="90" rx="20" ry="10" fill="#000" opacity="0.45"/>
+      <!-- Estipe afunilando: base 7px, ápice 4.5px (64%) -->
+      <path d="M 56.5,90 Q 74,58 66,26" stroke="#78350f" stroke-width="5" fill="none"/>
+      <path d="M 58.5,90 Q 75,58 68,26" stroke="#451a03" stroke-width="3" fill="none"/>
+
+      <!-- Cocos agrupados sob a inserção -->
+      <circle cx="66" cy="29" r="2.5" fill="#451a03"/>
+      <circle cx="69" cy="30" r="2.8" fill="#54260a"/>
+
+      <!-- Frondes partindo de UM ponto de inserção único no ápice (X0+7, Y0-62) -->
+      <g class="anim-palm-fronds">
+        <path d="M 67,26 Q 34,20 28,36" stroke="#15803d" stroke-width="2.5" fill="none"/>
+        <path d="M 67,26 Q 44,8 48,2" stroke="#22c55e" stroke-width="2.5" fill="none"/>
+        <path d="M 67,26 Q 88,6 96,16" stroke="#22c55e" stroke-width="2.5" fill="none"/>
+        <path d="M 67,26 Q 100,28 102,42" stroke="#15803d" stroke-width="2.5" fill="none"/>
+        <path d="M 67,26 Q 58,40 52,46" stroke="#166534" stroke-width="2.5" fill="none"/>
+      </g>
+    </svg></div>
+    <div class="era">FLORA / LITORAL & DUNAS</div>
+    <div class="arch">Palmeira Costeira</div>
+    <div class="desc">Tronco arqueado afunilando até o ápice, sombra 2:1 exata e coroa de folhas curvas saindo de um ponto único de inserção.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="90" rx="18.3" ry="9.2" fill="#000" opacity="0.45"/>
+      <!-- Tronco curvado sobre a margem -->
+      <path d="M 56,90 Q 42,63 54,38" stroke="#451a03" stroke-width="6" fill="none"/>
+      <path d="M 56,90 Q 42,63 54,38" stroke="#78350f" stroke-width="3" fill="none"/>
+
+      <!-- Cortina de ramos pendentes balançando -->
+      <g class="anim-sway-cap" style="transform-origin:54px 38px">
+        <circle cx="54" cy="38" r="12" fill="#15803d"/>
+        <!-- Ramos em cascata até o chão -->
+        <path d="M 44,42 Q 36,68 38,86" stroke="#4ade80" stroke-width="1.8" fill="none"/>
+        <path d="M 52,44 Q 48,70 50,86" stroke="#86efac" stroke-width="1.8" fill="none"/>
+        <path d="M 60,43 Q 66,68 64,86" stroke="#4ade80" stroke-width="1.8" fill="none"/>
+        <path d="M 68,40 Q 78,64 74,84" stroke="#22c55e" stroke-width="1.8" fill="none"/>
+      </g>
+    </svg></div>
+    <div class="era">MATA CILIAR / MARGEM FLUVIAL</div>
+    <div class="arch">Salgueiro da Várzea</div>
+    <div class="desc">Tronco inclinado sobre o leito com ramos pendentes verticais gerando ondulações circulares em 2:1 na superfície.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene"><svg viewBox="0 0 120 110" width="120" height="110" shape-rendering="crispEdges">
+      <ellipse cx="60" cy="86" rx="18.3" ry="9.2" fill="#000" opacity="0.45"/>
+      <polygon points="60,59.4 80.2,69.5 60,79.6 39.8,69.5" fill="#b45309"/><polygon points="39.8,84 60,94.1 60,79.6 39.8,69.5" fill="#78350f"/><polygon points="80.2,84 60,94.1 60,79.6 80.2,69.5" fill="#451a03"/>
+
+      <!-- Anéis anuais concêntricos no topo (Elipses 2:1) -->
+      <ellipse cx="60" cy="68" rx="10" ry="5" fill="none" stroke="#d97706" stroke-width="1"/>
+      <ellipse cx="60" cy="68" rx="6" ry="3" fill="none" stroke="#d97706" stroke-width="1"/>
+      <ellipse cx="60" cy="68" rx="2" ry="1" fill="#451a03"/>
+
+      <!-- Fenda radial de dessecação -->
+      <line x1="60" y1="68" x2="69" y2="71" stroke="#2e1102" stroke-width="1.5"/>
+
+      <!-- Fungos orelha-de-pau escalonados -->
+      <ellipse cx="46" cy="76" rx="6" ry="3" fill="#ea580c"/>
+      <ellipse cx="46" cy="76" rx="4" ry="2" fill="#fde047"/>
+      <ellipse cx="48" cy="82" rx="5" ry="2.5" fill="#ea580c"/>
+      <ellipse cx="48" cy="82" rx="3" ry="1.5" fill="#fde047"/>
+
+      <!-- Esporos luminosos no ar -->
+      <g class="anim-float-spores">
+        <circle cx="46" cy="66" r="1.5" fill="#fef08a"/>
+        <circle cx="52" cy="60" r="1.2" fill="#bef264"/>
+      </g>
+    </svg></div>
+    <div class="era">SILVICULTURA / DECOMPOSIÇÃO</div>
+    <div class="arch">Toco & Colônia Fúngica</div>
+    <div class="desc">Toco de corte ancestral com anéis de crescimento em elipses 2:1, fendas radiais de dessecação e fungos luminosos emitindo esporos.</div>
+  </div>
+
+  </div>
+
+  <div class="biome-section-title">3. ÓPTICA SUBMERSA & COSTA COM DITHER BAYER 4×4</div>
+  <div class="grid-wide">
+    
+  <div class="card card-wide">
+    <div class="scene scene-wide"><svg viewBox="0 0 160 120" width="160" height="120" shape-rendering="crispEdges">
+      <polygon points="80,38.09968943799849 136,66.09968943799849 80,94.09968943799849 24,66.09968943799849" fill="#162e47"/>
+      <g class="anim-fish-leap" style="opacity:0.65">
+        <ellipse cx="64" cy="62.09968943799849" rx="6" ry="3" fill="#060d17"/>
+        <ellipse cx="84" cy="68.09968943799849" rx="7" ry="3.5" fill="#060d17"/>
+        <ellipse cx="100" cy="60.09968943799849" rx="5" ry="2.5" fill="#060d17"/>
+      </g>
+      <g class="anim-fish-leap">
+        <ellipse cx="64" cy="54.049844718999246" rx="6" ry="2.8" fill="#f8fafc"/>
+        <polygon points="58,54.049844718999246 54,51.049844718999246 54,57.049844718999246" fill="#38bdf8"/>
+        
+        <ellipse cx="84" cy="60.049844718999246" rx="7" ry="3" fill="#f8fafc"/>
+        <polygon points="77,60.049844718999246 73,57.049844718999246 73,63.049844718999246" fill="#38bdf8"/>
+
+        <ellipse cx="100" cy="52.049844718999246" rx="5" ry="2.4" fill="#f8fafc"/>
+        <polygon points="95,52.049844718999246 91,49.049844718999246 91,55.049844718999246" fill="#38bdf8"/>
+      </g>
+      <polygon points="80,22 136,50 80,78 24,50" fill="#0284c7" opacity="0.45"/>
+      <g class="anim-water-flow">
+        <line x1="60" y1="48" x2="80" y2="58" stroke="#e0f2fe" stroke-width="1.5" opacity="0.8"/>
+        <line x1="84" y1="60" x2="104" y2="50" stroke="#e0f2fe" stroke-width="1.5" opacity="0.8"/>
+      </g>
+    </svg></div>
+    <div class="era">ÓPTICA SUBMERSA / PROFUNDIDADE</div>
+    <div class="arch">Cardume de Peixes Submerso</div>
+    <div class="desc">Coluna d’água com leito a z = -depth·S, sombras projetadas no fundo com deslocamento vertical exato e peixes em meia-água.</div>
+  </div>
+
+
+  <div class="card card-wide">
+    <div class="scene scene-wide"><svg viewBox="0 0 160 120" width="160" height="120" shape-rendering="crispEdges">
+      <polygon points="80,25 150,60 80,95 10,60" fill="#1b3a5c"/>
+      <polygon points="80,35 130,60 80,85 30,60" fill="#d9c89a"/>
+      <g class="anim-water-flow">
+        <line x1="30" y1="60" x2="80" y2="85" stroke="#f8fafc" stroke-width="2.5" stroke-dasharray="4 2"/>
+        <line x1="80" y1="85" x2="130" y2="60" stroke="#f8fafc" stroke-width="2.5" stroke-dasharray="4 2"/>
+      </g>
+      <line x1="50" y1="45" x2="70" y2="55" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="90" y1="55" x2="110" y2="45" stroke="#38bdf8" stroke-width="1.5"/>
+      <ellipse cx="95" cy="68" rx="2" ry="1.2" fill="#ef4444"/>
+    </svg></div>
+    <div class="era">LITORAL / DITHER BAYER 4×4</div>
+    <div class="arch">Arrebentação na Praia com Espuma</div>
+    <div class="desc">Costura da areia da praia com oceano profundo via dither Bayer 4×4 ordenado e cristas de arrebentação em declive dimétrico.</div>
+  </div>
+
+  </div>
+</div>
+
+<!-- ABA 3: MAQUINÁRIOS EXTRATIVISTAS -->
+<div id="tab-machines" class="tab-content">
+  <div class="grid">
+    
+  <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="12,78 60,102 108,78 60,54" fill="#000" opacity="0.45"/>
+        <polygon points="16,84 56,104 56,98 16,78" fill="#1b3a5c"/>
+        <polygon points="56,104 96,84 96,78 56,98" fill="#2f7fb3"/>
+        <polygon points="16,78 56,98 96,78 56,58" fill="#38bdf8" opacity="0.6"/>
+        <g class="anim-water-flow">
+          <line x1="20" y1="80" x2="54" y2="97" stroke="#e0f2fe" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <line x1="56" y1="97" x2="92" y2="79" stroke="#e0f2fe" stroke-width="1.5" stroke-dasharray="4 2"/>
+        </g>
+        <polygon points="36,70 64,84 64,48 36,34" fill="#543e2b"/>
+        <polygon points="64,84 88,72 88,36 64,48" fill="#3a2b1c"/>
+        <polygon points="36,34 64,48 88,36 60,22" fill="#855a30"/>
+        <polygon points="46,74 54,78 54,64 46,60" fill="#140d07"/>
+        <line x1="40" y1="74" x2="80" y2="54" stroke="#1f2937" stroke-width="2"/>
+        <line x1="44" y1="76" x2="84" y2="56" stroke="#1f2937" stroke-width="2"/>
+        <polygon points="46,68 76,53 76,47 46,62" fill="#a16207"/>
+        <ellipse cx="46" cy="65" rx="4" ry="3" fill="#855a30"/>
+        <ellipse cx="46" cy="65" rx="2" ry="1.5" fill="#d4b48a"/>
+        <!-- Lâmina de serra vertical em vaivém estrito -->
+        <g class="anim-saw-blade">
+          <rect x="57" y="46" width="2" height="18" fill="#cbd5e1"/>
+          <line x1="59" y1="46" x2="59" y2="64" stroke="#f8fafc" stroke-width="1"/>
+        </g>
+        <circle cx="58" cy="64" r="1.5" fill="#fde047" class="anim-sparks"/>
+        <!-- Roda d'água: centro calibrado em (26, 80) com pás em rotação circular estrita -->
+        <g class="anim-wheel-paddle-flow" style="transform-origin:26px 80px">
+          <ellipse cx="26" cy="80" rx="14" ry="14" fill="none" stroke="#451a03" stroke-width="4"/>
+          <ellipse cx="26" cy="80" rx="11" ry="11" fill="none" stroke="#78350f" stroke-width="2"/>
+          <line x1="26" y1="66" x2="26" y2="94" stroke="#2e1102" stroke-width="2"/>
+          <line x1="12" y1="80" x2="40" y2="80" stroke="#2e1102" stroke-width="2"/>
+          <line x1="16" y1="70" x2="36" y2="90" stroke="#2e1102" stroke-width="2"/>
+          <line x1="16" y1="90" x2="36" y2="70" stroke="#2e1102" stroke-width="2"/>
+          <circle cx="26" cy="80" r="3.5" fill="#b45309"/>
+        </g>
+        <ellipse cx="28" cy="94" rx="6" ry="2" fill="#f8fafc" opacity="0.8" class="anim-water-flow"/>
+      </svg>
+    </div>
+    <div class="era">SEMEADURA / ENGRENAGENS</div>
+    <div class="arch">Serraria Fluvial com Roda d’Água</div>
+    <div class="desc">Roda d’água acionando serra vertical alternativa em vaivém rigoroso. Toras de carvalho puxadas por carrilho dimétrico.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="12,78 60,102 108,78 60,54" fill="#000" opacity="0.45"/>
+        <ellipse cx="64" cy="74" rx="14" ry="7" fill="#020617"/>
+        <ellipse cx="64" cy="74" rx="12" ry="6" fill="#0f172a"/>
+        <line x1="50" y1="74" x2="58" y2="22" stroke="#451a03" stroke-width="3"/>
+        <line x1="78" y1="74" x2="66" y2="18" stroke="#451a03" stroke-width="3"/>
+        <line x1="38" y1="74" x2="58" y2="22" stroke="#78350f" stroke-width="2.5"/>
+        <line x1="90" y1="74" x2="66" y2="18" stroke="#78350f" stroke-width="2.5"/>
+        <line x1="54" y1="48" x2="72" y2="48" stroke="#78350f" stroke-width="2"/>
+        <line x1="54" y1="48" x2="66" y2="18" stroke="#54260a" stroke-width="1.5"/>
+        <line x1="72" y1="48" x2="58" y2="22" stroke="#54260a" stroke-width="1.5"/>
+        <!-- Roldana A (horário, anim-pulley-spin) centro (58, 22) -->
+        <g class="anim-pulley-spin" style="transform-origin:58px 22px">
+          <circle cx="58" cy="22" r="7" fill="#78350f"/>
+          <circle cx="58" cy="22" r="5" fill="#f59e0b"/>
+          <line x1="51" y1="22" x2="65" y2="22" stroke="#260c01" stroke-width="1.5"/>
+          <circle cx="58" cy="22" r="2" fill="#260c01"/>
+        </g>
+        <!-- Roldana B (anti-horário oposto, anim-pulley-spin-b) centro (66, 18) -->
+        <g class="anim-pulley-spin-b" style="transform-origin:66px 18px">
+          <circle cx="66" cy="18" r="6" fill="#451a03"/>
+          <circle cx="66" cy="18" r="4" fill="#d97706"/>
+          <line x1="60" y1="18" x2="72" y2="18" stroke="#1c0a00" stroke-width="1.5"/>
+          <circle cx="66" cy="18" r="1.5" fill="#1c0a00"/>
+        </g>
+        <!-- Cabo vertical de aço descendo com caçamba -->
+        <line x1="61" y1="22" x2="61" y2="60" stroke="#cbd5e1" stroke-width="1.2"/>
+        <polygon points="56,60 66,60 64,72 58,72" fill="#334155"/>
+        <circle cx="61" cy="56" r="1.5" fill="#fbbf24"/>
+        <line x1="20" y1="74" x2="50" y2="59" stroke="#1f2937" stroke-width="2"/>
+        <line x1="24" y1="76" x2="54" y2="61" stroke="#1f2937" stroke-width="2"/>
+        <polygon points="30,70 42,64 42,58 30,64" fill="#64748b"/>
+        <circle cx="36" cy="66" r="2" fill="#fde047"/>
+      </svg>
+    </div>
+    <div class="era">PRIMEIRO METAL / VAPOR</div>
+    <div class="arch">Cavalete de Poço de Mina (Headframe)</div>
+    <div class="desc">Torre treliçada com roldanas de extração contínua em rotação oposta e caçamba descendo ao veio profundo. Vagoneta sobre trilhos 2:1.</div>
+  </div>
+
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="16,84 60,106 104,84 60,62" fill="#000" opacity="0.4"/>
+
+        <!-- Bancadas Escalonadas da Pedreira (Frente de Lavra 3D) -->
+        <polygon points="18,74 46,88 46,66 18,52" fill="#64748b"/>
+        <polygon points="46,88 64,79 64,57 46,66" fill="#475569"/>
+        <polygon points="18,52 46,66 64,57 36,43" fill="#94a3b8"/>
+        <polygon points="36,43 64,57 64,37 36,23" fill="#64748b"/>
+        <polygon points="64,57 88,45 88,25 64,37" fill="#475569"/>
+        <polygon points="36,23 64,37 88,25 60,11" fill="#cbd5e1"/>
+
+        <!-- Rachaduras de Corte -->
+        <line x1="26" y1="56" x2="26" y2="70" stroke="#1e293b" stroke-width="1"/>
+        <line x1="38" y1="62" x2="38" y2="76" stroke="#1e293b" stroke-width="1"/>
+        <line x1="52" y1="45" x2="52" y2="55" stroke="#1e293b" stroke-width="1"/>
+
+        <!-- GUINDASTE DERRICK COM BLOCO SUSPENSO -->
+        <rect x="74" y="34" width="3.5" height="38" fill="#451a03"/>
+        <line x1="75" y1="34" x2="50" y2="60" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="77" y1="34" x2="98" y2="56" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="75" y1="64" x2="52" y2="38" stroke="#78350f" stroke-width="2.5"/>
+        <circle cx="52" cy="38" r="2" fill="#d97706"/>
+
+        <!-- Bloco de Cantaria Suspenso no Ar (Animado Balançando!) -->
+        <g class="anim-crane-swing" style="transform-origin:52px 38px">
+          <line x1="52" y1="38" x2="52" y2="58" stroke="#334155" stroke-width="1"/>
+          <line x1="46" y1="58" x2="52" y2="58" stroke="#1e293b" stroke-width="1.5"/>
+          <line x1="58" y1="58" x2="52" y2="58" stroke="#1e293b" stroke-width="1.5"/>
+          <polygon points="44,66 54,71 54,61 44,56" fill="#cbd5e1"/>
+          <polygon points="54,71 62,67 62,57 54,61" fill="#94a3b8"/>
+          <polygon points="44,56 54,61 62,57 52,52" fill="#f8fafc"/>
+        </g>
+
+        <!-- Marreta no Chão -->
+        <line x1="70" y1="84" x2="76" y2="81" stroke="#334155" stroke-width="2"/>
+        <circle cx="70" cy="84" r="2" fill="#0f172a"/>
+      </svg>
+    </div>
+    <div class="era">PEDRA LASCADA / CLÁSSICA</div>
+    <div class="arch">Pedreira & Guindaste Derrick</div>
+    <div class="pill-badge">Pedra / Cantaria (Stone)</div>
+    <div class="desc">Frente de lavra de granito escalonada. Guindaste derrick estaiado içando bloco maciço de cantaria de 2 toneladas.</div>
+  </div>
+
+  <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="12,78 60,102 108,78 60,54" fill="#000" opacity="0.45"/>
+        <polygon points="14,84 60,107 106,84 60,61" fill="#44403c"/>
+        <ellipse cx="26" cy="74" rx="3" ry="2" fill="#78350f"/>
+        <ellipse cx="32" cy="77" rx="3" ry="2" fill="#78350f"/>
+        <ellipse cx="38" cy="80" rx="3" ry="2" fill="#78350f"/>
+        <ellipse cx="29" cy="71" rx="3" ry="2" fill="#a16207"/>
+        <ellipse cx="35" cy="74" rx="3" ry="2" fill="#a16207"/>
+        <ellipse cx="64" cy="76" rx="20" ry="10" fill="#292524"/>
+        <path d="M 44,76 C 44,48 84,48 84,76 Z" fill="#57534e"/>
+        <path d="M 46,75 C 46,50 82,50 82,75 Z" fill="#44403c"/>
+        <ellipse cx="64" cy="56" rx="14" ry="7" fill="#78716c"/>
+        <ellipse cx="64" cy="53" rx="11" ry="5.5" fill="#a8a29e"/>
+        <rect x="61" y="36" width="6" height="18" fill="#292524"/>
+        <polygon points="61,36 67,36 68,34 60,34" fill="#44403c"/>
+        <polygon points="60,76 68,76 68,80 60,80" fill="#1c1917"/>
+        <g class="anim-forge-fire">
+          <ellipse cx="64" cy="78" rx="3" ry="2" fill="#ea580c"/>
+          <circle cx="64" cy="78" r="1.5" fill="#fde047"/>
+        </g>
+        <ellipse cx="64" cy="36" rx="3" ry="1.5" fill="#0c0a09"/>
+        <!-- 3 Camadas de fumaça com delays escalonados e deriva de vento coincidente com árvores -->
+        <circle cx="64" cy="31" r="3.5" fill="#44403c" class="anim-smoke-1"/>
+        <circle cx="63" cy="27" r="4.2" fill="#57534e" class="anim-smoke-2"/>
+        <circle cx="62" cy="22" r="5.0" fill="#78716c" class="anim-smoke-3"/>
+      </svg>
+    </div>
+    <div class="era">PRIMEIRO METAL / VAPOR</div>
+    <div class="arch">Carvoaria & Forno de Pirólise</div>
+    <div class="desc">Forno abobadado de carbonização lenta da madeira. Produz carvão vegetal de alta caloria com 3 camadas de fumaça e deriva de vento coerente.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="12,78 60,102 108,78 60,54" fill="#000" opacity="0.45"/>
+        <polygon points="16,84 60,106 104,84 60,62" fill="#334155"/>
+        <polygon points="18,83 60,104 102,83 60,63" fill="#475569"/>
+        <line x1="52" y1="80" x2="60" y2="44" stroke="#1e293b" stroke-width="4"/>
+        <line x1="68" y1="80" x2="60" y2="44" stroke="#0f172a" stroke-width="4"/>
+        <line x1="60" y1="88" x2="60" y2="44" stroke="#1e293b" stroke-width="3"/>
+        <line x1="55" y1="64" x2="65" y2="64" stroke="#334155" stroke-width="2"/>
+        <circle cx="60" cy="44" r="3.5" fill="#f59e0b"/>
+        <!-- Balancim com transform-origin: 60px 44px exato -->
+        <g class="anim-pumpjack" style="transform-origin:60px 44px">
+          <polygon points="26,42 86,42 86,46 26,46" fill="#475569"/>
+          <line x1="26" y1="42" x2="86" y2="42" stroke="#94a3b8" stroke-width="1"/>
+          <!-- Cabeça de cavalo circular -->
+          <path d="M 26,34 C 18,38 18,50 26,54 Z" fill="#334155"/>
+          <circle cx="24" cy="44" r="1.5" fill="#fde047"/>
+        </g>
+        <!-- Haste do poço em contrafase sincronizada (anim-pump-rod) -->
+        <g class="anim-pump-rod">
+          <line x1="20" y1="48" x2="20" y2="76" stroke="#cbd5e1" stroke-width="1.8"/>
+        </g>
+        <rect x="18" y="74" width="4" height="12" fill="#1e293b"/>
+        <ellipse cx="20" cy="74" rx="4" ry="2" fill="#64748b"/>
+        <line x1="86" y1="44" x2="84" y2="68" stroke="#334155" stroke-width="2"/>
+        <!-- Volante com giro horário contínuo centro (84, 68) -->
+        <g class="anim-gear-spin" style="transform-origin:84px 68px">
+          <circle cx="84" cy="68" r="10" fill="none" stroke="#0f172a" stroke-width="3"/>
+          <circle cx="84" cy="68" r="8" fill="none" stroke="#64748b" stroke-width="1.5"/>
+          <line x1="74" y1="68" x2="94" y2="68" stroke="#475569" stroke-width="1.5"/>
+          <line x1="84" y1="58" x2="84" y2="78" stroke="#475569" stroke-width="1.5"/>
+          <circle cx="84" cy="68" r="3" fill="#f59e0b"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">VAPOR / CONTEMPORÂNEA</div>
+    <div class="arch">Bomba de Vareta / Poço a Vapor</div>
+    <div class="desc">Balancim mecânico de contrapeso com cabeça de cavalo e êmbolo em contrafase rigorosa mantendo o curso vertical exato.</div>
+  </div>
+
+
+  <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="12,78 60,102 108,78 60,54" fill="#000" opacity="0.4"/>
+        <polygon points="12,84 60,108 108,84 60,60" fill="#0284c7" opacity="0.5"/>
+        <g class="anim-water-flow">
+          <ellipse cx="40" cy="84" rx="14" ry="7" fill="none" stroke="#e0f2fe" stroke-width="1"/>
+          <ellipse cx="80" cy="80" rx="12" ry="6" fill="none" stroke="#38bdf8" stroke-width="1"/>
+        </g>
+        <rect x="26" y="64" width="4" height="24" fill="#3b2516"/>
+        <rect x="52" y="74" width="4" height="26" fill="#29180c"/>
+        <rect x="76" y="66" width="4" height="24" fill="#29180c"/>
+        <polygon points="20,62 56,78 56,74 20,58" fill="#5c381c"/>
+        <polygon points="56,78 84,66 84,62 56,74" fill="#422610"/>
+        <polygon points="20,58 56,74 84,62 48,46" fill="#8c5828"/>
+        <line x1="28" y1="62" x2="56" y2="74" stroke="#422610" stroke-width="1"/>
+        <line x1="36" y1="58" x2="64" y2="70" stroke="#422610" stroke-width="1"/>
+        <line x1="44" y1="54" x2="72" y2="66" stroke="#422610" stroke-width="1"/>
+        <rect x="52" y="36" width="4" height="24" fill="#422610"/>
+        <circle cx="54" cy="36" r="2.5" fill="#d97706"/>
+        <!-- Lança articulada do guindaste com transform-origin: 54px 60px exato -->
+        <g class="anim-crane-swing" style="transform-origin:54px 60px">
+          <line x1="54" y1="60" x2="34" y2="44" stroke="#78350f" stroke-width="2.8"/>
+          <line x1="54" y1="36" x2="34" y2="44" stroke="#94a3b8" stroke-width="1"/>
+          <line x1="34" y1="44" x2="34" y2="72" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3 1.5"/>
+          <ellipse cx="34" cy="74" rx="6" ry="4" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+          <circle cx="33" cy="73" r="1.5" fill="#f8fafc"/>
+          <circle cx="36" cy="74" r="1.3" fill="#38bdf8"/>
+        </g>
+        <ellipse cx="78" cy="62" rx="4" ry="2" fill="#54260a"/>
+        <ellipse cx="78" cy="58" rx="4" ry="2" fill="#a16207"/>
+      </svg>
+    </div>
+    <div class="era">PEDRA LASCADA / SEMEADURA</div>
+    <div class="arch">Píer de Pesca & Draga Fluvial</div>
+    <div class="desc">Píer de palafitas de madeira com guindaste derrick e rede de arrasto recolhendo peixes da água viva.</div>
+  </div>
+
+  </div>
+</div>
+
+<!-- ABA 4: ARQUÉTIPOS ARQUITETÔNICOS -->
+<div id="tab-archetypes" class="tab-content">
+  <div class="grid">
+    <div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <!-- Sombra no solo -->
+        <polygon points="26,88 60,105 94,88 60,71" fill="#000" opacity="0.45"/>
+        
+        <!-- Alicerce de pedras brutas -->
+        <polygon points="28,81 60,97 60,91 28,75" fill="#524a3e"/>
+        <polygon points="60,97 92,81 92,75 60,91" fill="#383229"/>
+        <polygon points="28,75 60,91 92,75 60,59" fill="#696050"/>
+
+        <!-- Paredes de Troncos (Face Esquerda) -->
+        <polygon points="30,75 60,90 60,66 30,51" fill="#6a4524"/>
+        <line x1="30" y1="57" x2="60" y2="72" stroke="#4a3018" stroke-width="1.5"/>
+        <line x1="30" y1="63" x2="60" y2="78" stroke="#4a3018" stroke-width="1.5"/>
+        <line x1="30" y1="69" x2="60" y2="84" stroke="#4a3018" stroke-width="1.5"/>
+        <polygon points="26,76 30,78 30,74 26,72" fill="#84572e"/>
+        <polygon points="26,70 30,72 30,68 26,66" fill="#84572e"/>
+        <polygon points="26,64 30,66 30,62 26,60" fill="#84572e"/>
+        <polygon points="26,58 30,60 30,56 26,54" fill="#84572e"/>
+
+        <!-- Paredes de Troncos (Face Direita - Sombra) -->
+        <polygon points="60,90 90,75 90,51 60,66" fill="#382312"/>
+        <line x1="60" y1="72" x2="90" y2="57" stroke="#22150a" stroke-width="1.5"/>
+        <line x1="60" y1="78" x2="90" y2="63" stroke="#22150a" stroke-width="1.5"/>
+        <line x1="60" y1="84" x2="90" y2="69" stroke="#22150a" stroke-width="1.5"/>
+        <polygon points="90,74 94,76 94,72 90,70" fill="#422a16"/>
+        <polygon points="90,68 94,70 94,66 90,64" fill="#422a16"/>
+        <polygon points="90,62 94,64 94,60 90,58" fill="#422a16"/>
+
+        <!-- Entrada com Fogo Crepitante Animado -->
+        <polygon points="40,76 52,82 52,68 40,62" fill="#140c05"/>
+        <polygon points="50,81 52,82 52,68 50,67" fill="#2d1c0e"/>
+        <g class="anim-fire">
+          <polygon points="43,77 48,79.5 48,73 43,70.5" fill="#ea580c"/>
+          <circle cx="46" cy="74" r="1.5" fill="#fef08a"/>
+        </g>
+
+        <!-- Telhado de Couro Animado Balançando Levemente com a Brisa -->
+        <g class="anim-sway-roof">
+          <!-- Empena Frontal -->
+          <polygon points="24,52 60,70 44,26" fill="#854d0e"/>
+          <polygon points="26,51 58,67 44,28" fill="#a16207"/>
+          <line x1="32" y1="41" x2="50" y2="50" stroke="#ca8a04" stroke-width="1" stroke-dasharray="2 2"/>
+          <line x1="30" y1="48" x2="54" y2="60" stroke="#ca8a04" stroke-width="1" stroke-dasharray="2 2"/>
+          <!-- Vertente Direita -->
+          <polygon points="60,70 96,52 74,15 44,26" fill="#543109"/>
+          <polygon points="58,68 94,50 74,17 44,28" fill="#693c0a"/>
+          <polygon points="24,52 60,70 60,72 24,54" fill="#543109"/>
+          <polygon points="60,70 96,52 96,54 60,72" fill="#361f05"/>
+          <!-- Estacas no Cume -->
+          <line x1="41" y1="30" x2="47" y2="22" stroke="#854d0e" stroke-width="2"/>
+          <line x1="47" y1="30" x2="41" y2="22" stroke="#6a3d0b" stroke-width="2"/>
+          <line x1="71" y1="19" x2="77" y2="11" stroke="#543109" stroke-width="2"/>
+          <line x1="77" y1="19" x2="71" y2="11" stroke="#402405" stroke-width="2"/>
+          <line x1="44" y1="26" x2="74" y2="15" stroke="#331c04" stroke-width="1.5"/>
+        </g>
+
+        <!-- Fumaça Tênue Subindo do Cume (Animada) -->
+        <g class="anim-smoke-gentle">
+          <circle cx="58" cy="16" r="2" fill="#cbd5e1" opacity="0.6"/>
+          <circle cx="61" cy="11" r="2.5" fill="#94a3b8" opacity="0.5"/>
+          <circle cx="64" cy="5" r="3" fill="#64748b" opacity="0.3"/>
+        </g>
+
+        <!-- Pilão 3D de Pedra ao Lado -->
+        <polygon points="76,86 84,82 84,76 76,80" fill="#475569"/>
+        <polygon points="84,82 90,79 90,73 84,76" fill="#334155"/>
+        <ellipse cx="83" cy="76" rx="5" ry="2.5" fill="#64748b"/>
+        <rect x="82" y="70" width="2" height="6" fill="#78350f"/>
+      </svg>
+    </div>
+    <div class="era">ERA 0 · PEDRA LASCADA</div>
+    <div class="arch">Tribal / Paleolítico</div>
+    <div class="desc">Cabana de Troncos & Peles</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <!-- Sombra no solo -->
+        <polygon points="24,88 60,106 96,88 60,70" fill="#000" opacity="0.45"/>
+
+        <!-- Raízes 3D Ancorando no Solo -->
+        <polygon points="56,96 64,96 62,80 58,80" fill="#3f2715"/>
+        <polygon points="58,96 63,96 61,80 59,80" fill="#57361d"/>
+        <polygon points="28,84 38,89 48,80 44,76 34,81 26,78" fill="#341f10"/>
+        <polygon points="34,82 46,78 44,75 32,79" fill="#4d301a"/>
+        <polygon points="74,78 86,84 94,80 90,77 82,80 72,76" fill="#25160b"/>
+
+        <!-- Tronco Escavado -->
+        <polygon points="32,76 60,90 60,52 32,38" fill="#4d321d"/>
+        <polygon points="34,75 58,87 58,53 34,41" fill="#613f24"/>
+        <polygon points="60,90 88,76 88,38 60,52" fill="#2e1d11"/>
+        <polygon points="62,87 86,75 86,41 62,53" fill="#3b2516"/>
+
+        <!-- Veios de Seiva Pulsante Animada -->
+        <g class="anim-glow-pulse">
+          <line x1="44" y1="52" x2="44" y2="80" stroke="#84cc16" stroke-width="1.5"/>
+          <line x1="54" y1="58" x2="54" y2="85" stroke="#4ade80" stroke-width="1.5"/>
+          <circle cx="47" cy="66" r="2" fill="#ecfccb"/>
+        </g>
+
+        <!-- Porta e Janela -->
+        <polygon points="42,77 52,82 52,66 42,61" fill="#140b05"/>
+        <polygon points="50,81 52,82 52,66 50,65" fill="#362213"/>
+        <polygon points="70,68 80,63 80,53 70,58" fill="#1d120a"/>
+        <polygon points="71,67 79,63 79,55 71,59" fill="#d97706"/>
+        <polygon points="73,65 77,63 77,57 73,59" fill="#fef08a"/>
+
+        <!-- Copa de Cogumelo que Remexe Levemente (Balanço Orgânico Animado) -->
+        <g class="anim-sway-cap">
+          <ellipse cx="60" cy="50" rx="36" ry="18" fill="#1b2e0b"/>
+          <line x1="60" y1="50" x2="30" y2="50" stroke="#2d4a13" stroke-width="1"/>
+          <line x1="60" y1="50" x2="90" y2="50" stroke="#2d4a13" stroke-width="1"/>
+          <polygon points="24,50 60,68 96,50 60,32" fill="#2d4a13"/>
+          <polygon points="26,49 60,66 94,49 60,18" fill="#365314"/>
+          <polygon points="28,48 60,64 92,48 60,20" fill="#4d7c0f"/>
+          <polygon points="32,46 60,60 88,46 60,23" fill="#65a30d"/>
+          
+          <!-- Pintas Bioluminescentes no Chapéu -->
+          <circle cx="50" cy="40" r="2.5" fill="#bef264"/>
+          <circle cx="68" cy="38" r="3" fill="#bef264"/>
+          <circle cx="60" cy="30" r="3.5" fill="#ecfccb"/>
+          <circle cx="40" cy="36" r="2" fill="#a3e635"/>
+          <circle cx="80" cy="42" r="2" fill="#a3e635"/>
+        </g>
+
+        <!-- Esporos Vivos Flutuando no Ar (Animados) -->
+        <g class="anim-float-spores">
+          <circle cx="46" cy="18" r="1.5" fill="#ecfccb"/>
+          <circle cx="64" cy="12" r="2" fill="#bef264"/>
+          <circle cx="74" cy="16" r="1.5" fill="#86efac"/>
+          <circle cx="56" cy="8" r="1.5" fill="#bef264"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 1 · HARMONIA</div>
+    <div class="arch">Fitotécnica / Simbiótica</div>
+    <div class="desc">Casa-Tronco de Raízes Vivas</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="14,84 58,106 102,84 58,62" fill="#000" opacity="0.35"/>
+
+        <!-- Canal de Irrigação com Água Corrente Animada -->
+        <polygon points="14,88 62,112 70,108 22,84" fill="#785c3e"/>
+        <polygon points="16,88 62,111 68,108 22,85" fill="#0284c7"/>
+        <g class="anim-water-flow">
+          <polygon points="20,88 62,109 66,107 24,86" fill="#38bdf8"/>
+          <line x1="28" y1="88" x2="48" y2="98" stroke="#e0f2fe" stroke-width="1" stroke-dasharray="4 4"/>
+          <line x1="42" y1="95" x2="62" y2="105" stroke="#e0f2fe" stroke-width="1" stroke-dasharray="3 3"/>
+        </g>
+
+        <!-- Térreo de Adobe 3D Completo -->
+        <polygon points="26,76 58,92 58,66 26,50" fill="#a07d58"/>
+        <polygon points="28,75 56,89 56,67 28,53" fill="#b89168"/>
+        <polygon points="58,92 90,76 90,50 58,66" fill="#78593a"/>
+        <polygon points="60,89 88,75 88,53 60,67" fill="#8c6a47"/>
+        <polygon points="26,50 58,66 90,50 58,34" fill="#d4b48a"/>
+        <polygon points="28,50 58,65 88,50 58,35" fill="#e2c8a2"/>
+
+        <!-- Vigas de Cedro Salientes -->
+        <polygon points="24,53 27,54.5 27,52.5 24,51" fill="#452a15"/>
+        <polygon points="34,58 37,59.5 37,57.5 34,56" fill="#452a15"/>
+        <polygon points="44,63 47,64.5 47,62.5 44,61" fill="#452a15"/>
+        <polygon points="54,68 57,69.5 57,67.5 54,66" fill="#452a15"/>
+
+        <!-- Segundo Andar com Esteira que Balança Levemente -->
+        <polygon points="44,44 66,55 66,35 44,24" fill="#a07d58"/>
+        <polygon points="46,43 64,52 64,36 46,27" fill="#b89168"/>
+        <polygon points="66,55 86,45 86,25 66,35" fill="#78593a"/>
+        <polygon points="68,52 84,44 84,28 68,36" fill="#8c6a47"/>
+        <polygon points="44,24 66,35 86,25 64,14" fill="#e2c8a2"/>
+
+        <!-- Pérgula e Toldo Animado com Vento -->
+        <rect x="46" y="20" width="2" height="10" fill="#5c381c"/>
+        <rect x="64" y="29" width="2" height="10" fill="#5c381c"/>
+        <rect x="82" y="21" width="2" height="10" fill="#422610"/>
+        <g class="anim-cloth-flutter">
+          <polygon points="44,20 66,31 84,22 62,11" fill="#ca8a04"/>
+          <polygon points="46,20 66,30 82,22 62,12" fill="#eab308"/>
+        </g>
+
+        <!-- Porta e Acessórios -->
+        <polygon points="36,71 46,76 46,62 36,57" fill="#38210f"/>
+        <ellipse cx="41" cy="59" rx="5" ry="2.5" fill="#38210f"/>
+        <line x1="78" y1="74" x2="66" y2="44" stroke="#784822" stroke-width="2"/>
+        <line x1="82" y1="72" x2="70" y2="42" stroke="#5a3416" stroke-width="2"/>
+        <ellipse cx="32" cy="74" rx="3" ry="4.5" fill="#c2410c"/>
+      </svg>
+    </div>
+    <div class="era">ERA 1 · SEMEADURA</div>
+    <div class="arch">Agrícola / Hidráulica</div>
+    <div class="desc">Casa de Adobe & Calha d’Água</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="18,84 60,105 102,84 60,63" fill="#000" opacity="0.45"/>
+        <polygon points="20,82 60,102 100,82 60,62" fill="#334155"/>
+        <polygon points="22,81 60,100 98,81 60,62" fill="#475569"/>
+
+        <!-- FORNALHA 3D COMPLETA -->
+        <polygon points="24,68 50,81 50,53 24,40" fill="#7f1d1d"/>
+        <polygon points="26,67 48,78 48,55 26,44" fill="#991b1b"/>
+        <polygon points="50,81 68,72 68,44 50,53" fill="#581515"/>
+        <polygon points="52,78 66,71 66,47 52,54" fill="#701a1a"/>
+        <polygon points="24,40 50,53 68,44 42,31" fill="#b91c1c"/>
+        <polygon points="26,41 50,52 66,44 42,33" fill="#dc2626"/>
+
+        <!-- Boca da Fornalha com Brasa Viva e Calha Animada -->
+        <polygon points="32,71 44,77 44,63 32,57" fill="#1a0700"/>
+        <polygon points="42,76 44,77 44,63 42,62" fill="#380d00"/>
+        <g class="anim-forge-fire">
+          <polygon points="34,70 42,74 42,65 34,61" fill="#ea580c"/>
+          <circle cx="38" cy="67" r="2.5" fill="#fef08a"/>
+          <polygon points="43,74 56,80.5 56,79.5 43,73" fill="#fde047"/>
+        </g>
+        <polygon points="42,75 56,82 56,79 42,72" fill="#b45309"/>
+
+        <!-- Chaminé 3D com Faíscas Saltando (Animada!) -->
+        <polygon points="36,36 44,40 44,16 36,12" fill="#991b1b"/>
+        <polygon points="44,40 50,37 50,13 44,16" fill="#7f1d1d"/>
+        <ellipse cx="43" cy="14" rx="5" ry="2.5" fill="#450a0a"/>
+        <!-- Faíscas Subindo e Tremulando -->
+        <g class="anim-sparks">
+          <circle cx="42" cy="8" r="1.5" fill="#fbbf24"/>
+          <circle cx="47" cy="5" r="1" fill="#f97316"/>
+          <circle cx="40" cy="2" r="1" fill="#fef08a"/>
+        </g>
+
+        <!-- Bigorna 3D e Lingoteiras -->
+        <ellipse cx="80" cy="78" rx="8" ry="4.5" fill="#2d1a0e"/>
+        <polygon points="72,78 88,78 88,68 72,68" fill="#452715"/>
+        <ellipse cx="80" cy="68" rx="8" ry="4.5" fill="#5c341c"/>
+        <polygon points="76,68 84,72 84,62 76,58" fill="#d97706"/>
+        <polygon points="84,72 90,69 90,59 84,62" fill="#b45309"/>
+        <polygon points="76,58 84,62 90,59 82,55" fill="#fcd34d"/>
+        <polygon points="90,61 95,58.5 92,57 87,59.5" fill="#fef08a"/>
+
+        <!-- Tanque de Têmpera com VAPOR SAINDO (Animado!) -->
+        <polygon points="72,88 82,93 82,85 72,80" fill="#475569"/>
+        <polygon points="82,93 92,88 92,80 82,85" fill="#334155"/>
+        <polygon points="72,80 82,85 92,80 82,75" fill="#0284c7"/>
+        <polygon points="74,80 82,84 90,80 82,76" fill="#38bdf8"/>
+        <!-- Vaporzinho Subindo da Água Quente -->
+        <g class="anim-steam-puff">
+          <circle cx="80" cy="74" r="2" fill="#e0f2fe" opacity="0.6"/>
+          <circle cx="83" cy="70" r="2.5" fill="#bae6fd" opacity="0.5"/>
+          <circle cx="81" cy="65" r="3" fill="#94a3b8" opacity="0.3"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 2 · PRIMEIRO METAL</div>
+    <div class="arch">Metalurgia / Alquimia</div>
+    <div class="desc">Oficina de Forja & Calha de Bronze</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="20,86 60,106 100,86 60,66" fill="#000" opacity="0.45"/>
+        <line x1="28" y1="84" x2="60" y2="100" stroke="#c084fc" stroke-width="1" stroke-dasharray="3 3"/>
+        <line x1="60" y1="100" x2="92" y2="84" stroke="#c084fc" stroke-width="1" stroke-dasharray="3 3"/>
+
+        <!-- Câmara Menor Esquerda e Tubo -->
+        <polygon points="24,75 40,83 40,64 24,56" fill="#581c87"/>
+        <polygon points="40,83 50,78 50,59 40,64" fill="#3b0764"/>
+        <ellipse cx="37" cy="56" rx="14" ry="7" fill="#7e22ce"/>
+        <ellipse cx="37" cy="54" rx="12" ry="6" fill="#a855f7"/>
+        <polygon points="44,73 54,78 54,72 44,67" fill="#7e22ce"/>
+        <polygon points="54,78 62,74 62,68 54,72" fill="#581c87"/>
+
+        <!-- Tronco Principal e Janelas Bioluminescentes (Pulsando!) -->
+        <polygon points="44,78 66,89 66,52 44,41" fill="#581c87"/>
+        <polygon points="46,76 64,85 64,54 46,45" fill="#6b21a8"/>
+        <polygon points="66,89 88,78 88,41 66,52" fill="#3b0764"/>
+        <polygon points="66,85 86,75 86,45 66,54" fill="#4c1d95"/>
+        <g class="anim-glow-pulse">
+          <ellipse cx="54" cy="68" rx="2.5" ry="3" fill="#06b6d4"/>
+          <ellipse cx="54" cy="68" rx="1.5" ry="2" fill="#a5f3fc"/>
+          <ellipse cx="76" cy="63" rx="2" ry="2.5" fill="#0891b2"/>
+        </g>
+
+        <!-- Chapéu Gigante que Remexe Suavemente (Animado) -->
+        <g class="anim-sway-cap">
+          <ellipse cx="66" cy="48" rx="34" ry="17" fill="#250545"/>
+          <polygon points="32,48 66,65 100,48 66,31" fill="#4c1d95"/>
+          <polygon points="34,47 66,63 98,47 66,22" fill="#7e22ce"/>
+          <polygon points="36,46 66,61 96,46 66,24" fill="#9333ea"/>
+          <polygon points="42,40 66,52 90,40 66,19" fill="#a855f7"/>
+          <polygon points="46,37 66,47 86,37 66,17" fill="#c084fc"/>
+          <ellipse cx="66" cy="17" rx="5" ry="2.5" fill="#581c87"/>
+          <ellipse cx="66" cy="16" rx="3" ry="1.5" fill="#f0abfc"/>
+        </g>
+
+        <!-- Nuvens de Esporos Espalhadas e Subindo (Animadas) -->
+        <g class="anim-float-spores">
+          <circle cx="62" cy="10" r="1.5" fill="#f0abfc"/>
+          <circle cx="70" cy="7" r="2" fill="#e879f9"/>
+          <circle cx="58" cy="4" r="1" fill="#fdf4ff"/>
+          <circle cx="68" cy="2" r="1.5" fill="#d946ef"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 2 · MICÉLIO</div>
+    <div class="arch">Fúngica / Especulativa</div>
+    <div class="desc">Habitação Micelial de Esporos</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="16,84 60,106 104,84 60,62" fill="#000" opacity="0.38"/>
+
+        <!-- Crepidoma de 3 Degraus -->
+        <polygon points="18,79 60,100 60,97 18,76" fill="#94a3b8"/>
+        <polygon points="60,100 102,79 102,76 60,97" fill="#64748b"/>
+        <polygon points="21,75 60,94.5 60,91.5 21,72" fill="#cbd5e1"/>
+        <polygon points="60,94.5 99,75 99,72 60,91.5" fill="#94a3b8"/>
+        <polygon points="24,71 60,89 60,86 24,68" fill="#e2e8f0"/>
+        <polygon points="60,89 96,71 96,68 60,86" fill="#cbd5e1"/>
+        <polygon points="24,68 60,86 96,68 60,50" fill="#f8fafc"/>
+
+        <!-- Cella e Colunas -->
+        <polygon points="36,60 60,72 60,46 36,34" fill="#94a3b8"/>
+        <polygon points="60,72 84,60 84,34 60,46" fill="#64748b"/>
+        <polygon points="36,34 60,46 84,34 60,22" fill="#cbd5e1"/>
+        <polygon points="46,65 54,69 54,53 46,49" fill="#1c0f05"/>
+        <polygon points="47,64 53,67 53,54 47,51" fill="#78350f"/>
+
+        <!-- Colunata Dórica -->
+        <rect x="25" y="44" width="4" height="25" fill="#f8fafc"/>
+        <rect x="27" y="44" width="2" height="25" fill="#cbd5e1"/>
+        <rect x="36" y="50" width="4" height="25" fill="#f8fafc"/>
+        <rect x="38" y="50" width="2" height="25" fill="#cbd5e1"/>
+        <rect x="47" y="55" width="4" height="25" fill="#f8fafc"/>
+        <rect x="49" y="55" width="2" height="25" fill="#cbd5e1"/>
+        <rect x="58" y="61" width="4" height="25" fill="#f8fafc"/>
+        <rect x="60" y="61" width="2" height="25" fill="#cbd5e1"/>
+        <rect x="70" y="55" width="4" height="25" fill="#94a3b8"/>
+        <rect x="72" y="55" width="2" height="25" fill="#64748b"/>
+        <rect x="81" y="50" width="4" height="25" fill="#94a3b8"/>
+        <rect x="83" y="50" width="2" height="25" fill="#64748b"/>
+        <rect x="92" y="44" width="4" height="25" fill="#94a3b8"/>
+        <rect x="94" y="44" width="2" height="25" fill="#64748b"/>
+
+        <!-- Entablamento e Frontão -->
+        <polygon points="22,44 60,63 60,57 22,38" fill="#e2e8f0"/>
+        <polygon points="60,63 98,44 98,38 60,57" fill="#94a3b8"/>
+        <polygon points="22,38 60,57 41,25" fill="#f1f5f9"/>
+        <polygon points="26,38 56,53 41,28" fill="#854d0e"/>
+        <!-- Roda do Pêndulo que Pulsa Dourada -->
+        <circle cx="41" cy="40" r="3.5" fill="#f59e0b" class="anim-glow-pulse"/>
+
+        <polygon points="60,57 98,38 79,06 41,25" fill="#c2410c"/>
+        <polygon points="62,56 96,39 79,08 43,26" fill="#ea580c"/>
+
+        <!-- Pira de Fogo Sagrado na Frente com Chama Animada -->
+        <polygon points="46,88 52,91 52,86 46,83" fill="#64748b"/>
+        <polygon points="52,91 58,88 58,83 52,86" fill="#475569"/>
+        <g class="anim-fire">
+          <ellipse cx="52" cy="83" rx="3" ry="4" fill="#f97316"/>
+          <circle cx="52" cy="82" r="1.5" fill="#fef08a"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 2 · CLÁSSICA</div>
+    <div class="arch">Imperial / Cívico</div>
+    <div class="desc">Templo Períptero de Calcário</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="18,84 62,106 102,86 58,64" fill="#000" opacity="0.4"/>
+
+        <!-- Torreão 3D -->
+        <polygon points="62,82 82,92 82,24 62,14" fill="#475569"/>
+        <polygon points="82,92 102,82 102,14 82,24" fill="#334155"/>
+        <polygon points="62,14 82,24 102,14 82,04" fill="#1e293b"/>
+        
+        <!-- Ameias e Merlões -->
+        <polygon points="79,24 85,27 85,20 79,17" fill="#64748b"/>
+        <polygon points="85,27 88,25.5 88,18.5 85,20" fill="#475569"/>
+        <polygon points="79,17 85,20 88,18.5 82,15.5" fill="#94a3b8"/>
+        <polygon points="61,14 66,16.5 66,10.5 61,08" fill="#64748b"/>
+        <polygon points="61,08 66,10.5 68,09.5 63,07" fill="#94a3b8"/>
+        <polygon points="97,16.5 102,14 102,08 97,10.5" fill="#475569"/>
+        <polygon points="97,10.5 102,08 99,06.5 94,09" fill="#334155"/>
+
+        <!-- Cata-vento de Ferro Forjado no Cimo (Animado!) -->
+        <g class="anim-weather-vane">
+          <line x1="82" y1="4" x2="82" y2="-4" stroke="#0f172a" stroke-width="1.5"/>
+          <polygon points="78,-4 86,-4 82,-8" fill="#b45309"/>
+        </g>
+
+        <!-- Casa Enxaimel com Janela de Vela Tremulante -->
+        <polygon points="20,74 54,91 54,68 20,51" fill="#64748b"/>
+        <polygon points="54,91 62,87 62,64 54,68" fill="#475569"/>
+        <polygon points="16,56 54,75 54,68 16,49" fill="#3f2e20"/>
+        <polygon points="16,56 54,75 54,42 16,23" fill="#f1f5f9"/>
+        <polygon points="54,75 74,65 74,32 54,42" fill="#cbd5e1"/>
+
+        <!-- Vigamento -->
+        <line x1="16" y1="56" x2="54" y2="75" stroke="#2d1d12" stroke-width="2"/>
+        <line x1="54" y1="75" x2="74" y2="65" stroke="#1f140c" stroke-width="2"/>
+        <line x1="16" y1="23" x2="54" y2="42" stroke="#2d1d12" stroke-width="2"/>
+        <line x1="54" y1="42" x2="74" y2="32" stroke="#1f140c" stroke-width="2"/>
+        <line x1="16" y1="56" x2="35" y2="32" stroke="#3d2719" stroke-width="1.5"/>
+        <line x1="16" y1="32" x2="35" y2="56" stroke="#3d2719" stroke-width="1.5"/>
+        <line x1="35" y1="65" x2="54" y2="42" stroke="#3d2719" stroke-width="1.5"/>
+        <line x1="35" y1="42" x2="54" y2="65" stroke="#3d2719" stroke-width="1.5"/>
+
+        <!-- Janela de Vidro Iluminada Tremulando -->
+        <polygon points="26,46 36,51 36,41 26,36" fill="#1e293b"/>
+        <polygon points="28,45 34,48 34,42 28,39" fill="#10b981" class="anim-glow-pulse"/>
+
+        <polygon points="16,23 54,42 35,07" fill="#334155"/>
+        <polygon points="54,42 74,32 55,-03 35,07" fill="#1e293b"/>
+      </svg>
+    </div>
+    <div class="era">ERA 3 · FEUDALISMO</div>
+    <div class="arch">Feudal / Militar</div>
+    <div class="desc">Torreão Enxaimel & Cantaria</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="24,86 60,104 96,86 60,68" fill="#000" opacity="0.4"/>
+
+        <!-- Base 3D -->
+        <polygon points="28,78 60,94 60,78 28,62" fill="#475569"/>
+        <polygon points="60,94 92,78 92,62 60,78" fill="#334155"/>
+        <polygon points="28,62 60,78 92,62 60,46" fill="#64748b"/>
+
+        <!-- Câmara de Vidro 3D do Pêndulo -->
+        <polygon points="34,60 60,73 60,37 34,24" fill="#0f172a"/>
+        <polygon points="60,73 86,60 86,24 60,37" fill="#020617"/>
+
+        <!-- ENGRENAGEM DE BRONZE GIRANDO CONTINUAMENTE (Animada!) -->
+        <g class="anim-gear-spin">
+          <circle cx="48" cy="44" r="7" fill="#b45309"/>
+          <circle cx="48" cy="44" r="5" fill="#f59e0b"/>
+          <line x1="41" y1="44" x2="55" y2="44" stroke="#451a03" stroke-width="1.5"/>
+          <line x1="48" y1="37" x2="48" y2="51" stroke="#451a03" stroke-width="1.5"/>
+          <circle cx="48" cy="44" r="2" fill="#451a03"/>
+        </g>
+        <circle cx="70" cy="44" r="5" fill="#92400e"/>
+
+        <!-- O GRANDE PÊNDULO DE JACOBI OSCILANDO RITMICAMENTE (Animado!) -->
+        <g class="anim-pendulum-swing">
+          <line x1="60" y1="37" x2="60" y2="66" stroke="#fcd34d" stroke-width="2"/>
+          <ellipse cx="60" cy="66" rx="5" ry="3.5" fill="#b45309"/>
+          <ellipse cx="60" cy="66" rx="4" ry="2.5" fill="#fbbf24"/>
+          <circle cx="60" cy="66" r="1.5" fill="#fef08a"/>
+        </g>
+
+        <!-- Vidraças Transparentes 3D e Reflexos -->
+        <polygon points="30,62 60,77 60,37 30,22" fill="#38bdf8" opacity="0.3"/>
+        <polygon points="60,77 90,62 90,22 60,37" fill="#0284c7" opacity="0.25"/>
+        <line x1="36" y1="52" x2="52" y2="36" stroke="#fff" stroke-width="1" opacity="0.7"/>
+
+        <!-- Pilares de Bronze -->
+        <rect x="29" y="22" width="3" height="42" fill="#b45309"/>
+        <rect x="58.5" y="37" width="3" height="42" fill="#d97706"/>
+        <rect x="88" y="22" width="3" height="42" fill="#78350f"/>
+
+        <!-- Mostrador de Fases k e u com Ponteiro Oscilando -->
+        <polygon points="36,25 60,37 60,17 36,05" fill="#b45309"/>
+        <polygon points="60,37 84,25 84,05 60,17" fill="#78350f"/>
+        <polygon points="36,05 60,17 84,05 60,-07" fill="#f59e0b"/>
+        <ellipse cx="60" cy="27" rx="14" ry="7" fill="#1c1917"/>
+        <ellipse cx="60" cy="27" rx="12" ry="6" fill="#fef08a"/>
+        <g class="anim-dial-pointer">
+          <line x1="60" y1="27" x2="66" y2="24" stroke="#b91c1c" stroke-width="1.5"/>
+        </g>
+        <circle cx="60" cy="27" r="2" fill="#451a03"/>
+
+        <!-- Esfera Armilar Girando Levemente no Cimo -->
+        <g class="anim-armillary">
+          <ellipse cx="60" cy="07" rx="8" ry="4" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+          <ellipse cx="60" cy="07" rx="4" ry="8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 3 · ENGRENAGENS</div>
+    <div class="arch">Mecânica / Rítmica</div>
+    <div class="desc">Torre de Pêndulo & Jacobi</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="14,84 60,107 106,84 60,61" fill="#000" opacity="0.45"/>
+        <polygon points="16,82 60,104 104,82 60,60" fill="#1c1917"/>
+
+        <!-- Galpão 3D Completo -->
+        <polygon points="16,74 52,92 52,56 16,38" fill="#7f1d1d"/>
+        <polygon points="18,73 50,89 50,58 18,42" fill="#991b1b"/>
+        <polygon points="52,92 84,76 84,40 52,56" fill="#581515"/>
+        <polygon points="54,89 82,75 82,43 54,57" fill="#701a1a"/>
+        <polygon points="58,85 74,77 74,53 58,61" fill="#1c1917"/>
+
+        <!-- Telhado Shed 3D -->
+        <polygon points="16,38 34,47 26,28" fill="#450a0a"/>
+        <polygon points="26,28 34,47 66,31 58,12" fill="#38bdf8"/>
+        <polygon points="34,47 52,56 84,40 66,31" fill="#292524"/>
+
+        <!-- Caldeira Cilíndrica e Tubulação com Baforada de Vapor -->
+        <polygon points="76,86 86,91 86,85 76,80" fill="#1c1917"/>
+        <ellipse cx="78" cy="80" rx="9" ry="5.5" fill="#292524"/>
+        <polygon points="78,85.5 96,76.5 96,65.5 78,74.5" fill="#44403c"/>
+        <polygon points="80,84 96,76 96,67 80,75" fill="#57534e"/>
+        <ellipse cx="96" cy="71" rx="8" ry="5" fill="#292524"/>
+        <ellipse cx="96" cy="71" rx="6" ry="3.5" fill="#78716c"/>
+        <path d="M 50,70 L 64,63 L 64,53 L 78,46" fill="none" stroke="#ca8a04" stroke-width="2.5"/>
+        <circle cx="64" cy="58" r="2.5" fill="#dc2626"/>
+        <!-- Vapor saindo da válvula -->
+        <g class="anim-steam-puff">
+          <circle cx="64" cy="52" r="2" fill="#f1f5f9" opacity="0.8"/>
+          <circle cx="63" cy="47" r="2.5" fill="#e2e8f0" opacity="0.6"/>
+          <circle cx="65" cy="42" r="3.5" fill="#94a3b8" opacity="0.4"/>
+        </g>
+
+        <!-- Chaminé Gigante -->
+        <polygon points="88,64 96,68 94,14 88,14" fill="#991b1b"/>
+        <polygon points="96,68 102,65 100,14 94,14" fill="#7f1d1d"/>
+        <ellipse cx="94" cy="14" rx="6" ry="3" fill="#1c1917"/>
+
+        <!-- FUMAÇA VOLUMÉTRICA INDUSTRIAL SUBINDO (Animada!) -->
+        <g class="anim-heavy-smoke">
+          <circle cx="94" cy="9" r="4.5" fill="#334155" opacity="0.85"/>
+          <circle cx="97" cy="4" r="5.5" fill="#475569" opacity="0.75"/>
+          <circle cx="101" cy="-2" r="6.5" fill="#64748b" opacity="0.6"/>
+          <circle cx="106" cy="-9" r="8" fill="#94a3b8" opacity="0.4"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 4 · VAPOR</div>
+    <div class="arch">Industrial / Extrativista</div>
+    <div class="desc">Fundição a Vapor & Caldeira</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="18,84 60,105 102,84 60,63" fill="#000" opacity="0.35"/>
+        <polygon points="20,82 60,102 100,82 60,62" fill="#0f766e"/>
+        <polygon points="22,81 60,100 98,81 60,62" fill="#14b8a6"/>
+
+        <!-- Fachada Esquerda: Painéis Solares com Brilho Refletido -->
+        <polygon points="26,74 60,91 60,49 26,32" fill="#0369a1"/>
+        <polygon points="28,72 58,87 58,52 28,37" fill="#0284c7"/>
+        <g class="anim-glow-pulse">
+          <polygon points="34,56 42,60 42,50 34,46" fill="#38bdf8"/>
+          <polygon points="44,61 52,65 52,55 44,51" fill="#7dd3fc"/>
+          <polygon points="34,68 42,72 42,62 34,58" fill="#38bdf8"/>
+          <polygon points="44,73 52,77 52,67 44,63" fill="#7dd3fc"/>
+        </g>
+
+        <!-- Fachada Direita com Jardins Verticais que Balançam com a Brisa -->
+        <polygon points="60,91 94,74 94,32 60,49" fill="#0f766e"/>
+        <polygon points="62,87 92,72 92,37 62,52" fill="#115e59"/>
+        <polygon points="64,80 90,67 90,60 64,73" fill="#78350f"/>
+        <polygon points="64,73 90,60 84,57 58,70" fill="#451a03"/>
+        <g class="anim-leaves-sway">
+          <polygon points="60,70 88,56 88,51 60,65" fill="#15803d"/>
+          <polygon points="60,66 88,52 88,49 60,63" fill="#4ade80"/>
+          <circle cx="68" cy="63" r="1.5" fill="#f43f5e"/>
+          <circle cx="78" cy="58" r="1.5" fill="#facc15"/>
+          <circle cx="84" cy="54" r="1.5" fill="#f43f5e"/>
+        </g>
+
+        <!-- Cobertura: Domo Geodésico 3D -->
+        <polygon points="26,32 60,49 94,32 60,15" fill="#d97706"/>
+        <polygon points="28,33 60,47 92,33 60,18" fill="#fef08a"/>
+        <line x1="28" y1="33" x2="60" y2="47" stroke="#b45309" stroke-width="2"/>
+        <line x1="60" y1="47" x2="92" y2="33" stroke="#b45309" stroke-width="2"/>
+        <line x1="60" y1="47" x2="60" y2="18" stroke="#b45309" stroke-width="2"/>
+
+        <!-- TURBINA EÓLICA HELICOIDAL GIRANDO NO TOPO (Animada!) -->
+        <line x1="60" y1="18" x2="60" y2="6" stroke="#0284c7" stroke-width="2"/>
+        <g class="anim-turbine-spin">
+          <path d="M 56,12 Q 60,7 64,12 Q 60,17 56,12" fill="#38bdf8" opacity="0.85"/>
+          <ellipse cx="60" cy="6" rx="4" ry="2" fill="#0284c7"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 5 · SOLARPUNK</div>
+    <div class="arch">Bioclimática / Regenerativa</div>
+    <div class="desc">Arcologia de Madeira & Vidro Solar</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <polygon points="20,86 60,106 100,86 60,66" fill="#000" opacity="0.35"/>
+        <polygon points="22,84 60,103 98,84 60,65" fill="#64748b"/>
+
+        <!-- Espelho d'água no solo com Reflexo Animado -->
+        <polygon points="38,81 60,92 76,84 54,73" fill="#0284c7"/>
+        <g class="anim-water-flow">
+          <polygon points="40,81 60,91 74,84 54,74" fill="#38bdf8"/>
+        </g>
+
+        <!-- Pilotis e Laje Inferior 3D -->
+        <rect x="28" y="66" width="3.5" height="18" fill="#cbd5e1"/>
+        <rect x="30" y="66" width="1.5" height="18" fill="#94a3b8"/>
+        <rect x="58" y="80" width="3.5" height="18" fill="#e2e8f0"/>
+        <rect x="60" y="80" width="1.5" height="18" fill="#94a3b8"/>
+        <rect x="88" y="66" width="3.5" height="18" fill="#64748b"/>
+        <rect x="90" y="66" width="1.5" height="18" fill="#475569"/>
+        <polygon points="22,66 60,85 98,66 60,47" fill="#475569"/>
+        <polygon points="26,66 60,83 94,66 60,49" fill="#334155"/>
+
+        <!-- Volume de Concreto Aparente -->
+        <polygon points="22,66 60,85 60,47 22,28" fill="#cbd5e1"/>
+        <polygon points="24,65 58,82 58,49 24,32" fill="#e2e8f0"/>
+        <polygon points="60,85 98,66 98,28 60,47" fill="#94a3b8"/>
+        <polygon points="62,82 96,65 96,32 62,49" fill="#64748b"/>
+
+        <!-- Janela em Fita Contínua -->
+        <polygon points="28,52 54,65 54,57 28,44" fill="#0f172a"/>
+        <polygon points="29,51 53,63 53,58 29,46" fill="#38bdf8"/>
+        <polygon points="66,62 92,49 92,41 66,54" fill="#0f172a"/>
+        <polygon points="67,61 91,49 91,43 67,55" fill="#0284c7"/>
+
+        <!-- Terraço-Jardim com Arbusto Balançando com o Vento -->
+        <polygon points="22,28 60,47 98,28 60,09" fill="#f8fafc"/>
+        <line x1="22" y1="25" x2="60" y2="44" stroke="#475569" stroke-width="1.5"/>
+        <line x1="60" y1="44" x2="98" y2="25" stroke="#475569" stroke-width="1.5"/>
+        <g class="anim-leaves-sway">
+          <ellipse cx="64" cy="36" rx="4" ry="3" fill="#15803d"/>
+          <ellipse cx="64" cy="34" rx="3" ry="2.5" fill="#4ade80"/>
+        </g>
+      </svg>
+    </div>
+    <div class="era">ERA 5 · CONTEMPORÂNEA</div>
+    <div class="arch">Modernista / Funcional</div>
+    <div class="desc">Residência em Concreto & Pilotis</div>
+  </div>
+<div class="card">
+    <div class="scene">
+      <svg width="120" height="110" viewBox="0 0 120 110" shape-rendering="crispEdges">
+        <!-- Base de Indução Magnética no Solo -->
+        <polygon points="22,86 60,105 98,86 60,67" fill="#000" opacity="0.5"/>
+        <ellipse cx="60" cy="86" rx="30" ry="15" fill="#082f49"/>
+        <ellipse cx="60" cy="86" rx="26" ry="13" fill="none" stroke="#06b6d4" stroke-width="1.5" class="anim-glow-pulse"/>
+        <ellipse cx="60" cy="86" rx="20" ry="10" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4 3"/>
+
+        <!-- O MONÓLITO EM LEVITAÇÃO OSCILANTE (Flutuando no Ar!) -->
+        <g class="anim-levitate">
+          <!-- Chanfro Inferior Visível -->
+          <polygon points="28,68 60,84 60,78 34,65" fill="#090d16"/>
+          <polygon points="60,84 92,68 86,65 60,78" fill="#020408"/>
+
+          <!-- Fachadas do Monólito de Obsidiana -->
+          <polygon points="28,68 60,84 60,18 28,02" fill="#0f172a"/>
+          <polygon points="30,66 58,80 58,21 30,06" fill="#1e293b"/>
+          <polygon points="60,84 92,68 92,02 60,18" fill="#020617"/>
+          <polygon points="62,80 90,66 90,06 62,21" fill="#0f172a"/>
+          <polygon points="28,02 60,18 92,02 60,-14" fill="#334155"/>
+
+          <!-- Cavidade 3D do Núcleo -->
+          <polygon points="52,56 60,60 60,36 52,32" fill="#020617"/>
+          <polygon points="60,60 68,56 68,32 60,36" fill="#000000"/>
+          <polygon points="52,32 60,36 68,32 60,28" fill="#1e1b4b"/>
+          
+          <!-- TOROIDE DE PLASMA PULSANTE E RESSONANTE (Animado!) -->
+          <g class="anim-plasma-pulse">
+            <ellipse cx="60" cy="46" rx="5.5" ry="9" fill="#d946ef"/>
+            <ellipse cx="60" cy="46" rx="4" ry="7" fill="#38bdf8"/>
+            <circle cx="60" cy="46" r="2.5" fill="#ffffff"/>
+          </g>
+
+          <!-- Conduítes Neon -->
+          <polygon points="36,54 50,61 50,57 36,50" fill="#f43f5e" class="anim-glow-pulse"/>
+          <polygon points="36,36 50,43 50,39 36,32" fill="#06b6d4" class="anim-glow-pulse"/>
+          <polygon points="70,61 84,54 84,50 70,57" fill="#d946ef" class="anim-glow-pulse"/>
+          <polygon points="70,43 84,36 84,32 70,39" fill="#0284c7" class="anim-glow-pulse"/>
+        </g>
+
+        <!-- ANÉIS DE DADOS ORBITAIS GIRANDO AO REDOR DO MONÓLITO (Animados!) -->
+        <g class="anim-orbital-rings">
+          <ellipse cx="60" cy="38" rx="36" ry="14" fill="none" stroke="#38bdf8" stroke-width="1" opacity="0.7" stroke-dasharray="5 4"/>
+          <ellipse cx="60" cy="58" rx="34" ry="12" fill="none" stroke="#f43f5e" stroke-width="1" opacity="0.6" stroke-dasharray="3 5"/>
+        </g>
+        <circle cx="56" cy="74" r="1.5" fill="#38bdf8" class="anim-float-spores"/>
+        <circle cx="66" cy="70" r="1" fill="#f43f5e" class="anim-float-spores"/>
+      </svg>
+    </div>
+    <div class="era">ERA 6 · PÓS-HUMANA</div>
+    <div class="arch">Ressonante / Quântica</div>
+    <div class="desc">Monólito de Cristal & Levitação</div>
+  </div>
+  </div>
+</div>
+
+<!-- ABA 5: GEOMETRIA & FÍSICA DIMÉTRICA -->
+<div id="tab-geometry" class="tab-content">
+  <div class="card" style="text-align:left; padding:22px; max-width:960px; margin:0 auto; line-height:1.8;">
+    <div class="era">SUBSTRATO MATEMÁTICO DO PROJETO OIKOS</div>
+    <div class="arch" style="font-size:11px; margin-bottom:14px;">Fundamentos da Projeção Dimétrica 2:1 & Cinemática Jacobi</div>
+    <p class="desc" style="font-size:7.5px; margin-bottom:12px;">
+      A projeção dimétrica canônica de Oikos define o vetor de base espacial:
+      <br><strong>X = (u - v) · HW</strong> onde HW = 32px
+      <br><strong>Y = (u + v) · HH - w · S</strong> onde HH = 16px e S = √(HW² + HH²) = 16√5 ≈ 35.777px.
+    </p>
+    <p class="desc" style="font-size:7.5px; margin-bottom:12px;">
+      <strong>1. Declives em 2:1:</strong> Todas as arestas horizontais projetadas possuem coeficiente angular exato de ±0.5 (±1/2). Qualquer desvio produz desalinhamento de ladrilhos adjacentes. As perpendiculares em tela nos planos verticais possuem declive exato de ±2.0.
+    </p>
+    <p class="desc" style="font-size:7.5px; margin-bottom:12px;">
+      <strong>2. Círculos no Plano Horizontal:</strong> Um círculo de raio R no plano uv projeta-se como uma elipse pura com semieixos alinhados aos eixos de tela: <strong>rx = 2 · ry</strong>.
+    </p>
+    <p class="desc" style="font-size:7.5px; margin-bottom:12px;">
+      <strong>3. Círculos em Planos Verticais:</strong> Rodas de moinho e engrenagens em paredes verticais seguem a transformação afim da matriz do plano [±HW 0; HH -S], resultando em elipses inclinadas com o eixo maior ao longo da diagonal dimétrica, evitando a distorção vertical planar comum.
+    </p>
+    <p class="desc" style="font-size:7.5px; margin-bottom:12px;">
+      <strong>4. Cinemática de Jacobi:</strong> O pêndulo elíptico satisfaz d²θ/dt² + ω²·sin(θ) = 0, com velocidade angular vel = ω·cn(u, k). A dwell time nos extremos aumenta monotonicamente com k ∈ [0, 0.9999], acelerando com ease-in até o centro e desacelerando com ease-out na subida.
+    </p>
+  </div>
+</div>
+
+</main>
+
+<script>
+  function switchTab(tabId, ev) {
+    document.querySelectorAll('.tab-btn').forEach(function(b) {
+      b.classList.remove('active');
+    });
+    if (ev && ev.currentTarget) ev.currentTarget.classList.add('active');
+
+    document.querySelectorAll('.tab-content').forEach(function(c) {
+      c.classList.remove('active');
+    });
+    const target = document.getElementById('tab-' + tabId);
+    if (target) target.classList.add('active');
+  }
+
+  function toggleAnimations() {
+    var b = document.body;
+    var s = document.getElementById('anim-status');
+    if (b.classList.contains('animations-paused')) {
+      b.classList.remove('animations-paused');
+      s.innerText = 'ON';
+      s.style.color = '#4ade80';
+    } else {
+      b.classList.add('animations-paused');
+      s.innerText = 'OFF';
+      s.style.color = '#f87171';
+    }
+  }
+
+  function filterAngles(ang, ev) {
+    document.querySelectorAll('.angle-filter-btn').forEach(function(b) {
+      b.classList.remove('active');
+    });
+    if (ev && ev.currentTarget) ev.currentTarget.classList.add('active');
+
+    document.querySelectorAll('.angle-box').forEach(function(box) {
+      if (ang === 'all') {
+        box.style.display = 'block';
+      } else {
+        box.style.display = box.classList.contains('angle-' + ang) ? 'block' : 'none';
+      }
+    });
+
+    document.querySelectorAll('.angles-row').forEach(function(row) {
+      if (ang === 'all') {
+        row.style.gridTemplateColumns = 'repeat(4, 1fr)';
+      } else {
+        row.style.gridTemplateColumns = '1fr';
+      }
+    });
+  }
+</script>
+
+</body>
+</html>
