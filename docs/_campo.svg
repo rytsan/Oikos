@@ -1,0 +1,349 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="576" height="260" viewBox="0 0 288 130">
+<rect width="288" height="130" fill="#1b1f26"/>
+<g transform="translate(64,-16)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="48,46 62,53 50,59 36,52" fill="#635a4b"/>
+  <polygon points="34,57 44,62 40,64 30,59" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="56" y="52" width="3" height="1"/><rect x="30" y="54" width="2" height="1"/>
+    <rect x="48" y="64" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="28" y="55" width="2" height="1"/><rect x="66" y="55" width="2" height="1"/>
+    <rect x="46" y="66" width="2" height="1"/><rect x="54" y="47" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(128,-16)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="40,52 54,59 44,64 30,57" fill="#635a4b"/>
+  <polygon points="54,48 64,53 58,56 48,51" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="36" y="50" width="3" height="1"/><rect x="60" y="58" width="2" height="1"/>
+    <rect x="42" y="66" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="34" y="52" width="2" height="1"/><rect x="62" y="52" width="2" height="1"/>
+    <rect x="52" y="64" width="2" height="1"/><rect x="44" y="45" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(32,0)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="40,52 54,59 44,64 30,57" fill="#635a4b"/>
+  <polygon points="54,48 64,53 58,56 48,51" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="36" y="50" width="3" height="1"/><rect x="60" y="58" width="2" height="1"/>
+    <rect x="42" y="66" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="34" y="52" width="2" height="1"/><rect x="62" y="52" width="2" height="1"/>
+    <rect x="52" y="64" width="2" height="1"/><rect x="44" y="45" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(96,0)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="48,46 62,53 50,59 36,52" fill="#635a4b"/>
+  <polygon points="34,57 44,62 40,64 30,59" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="56" y="52" width="3" height="1"/><rect x="30" y="54" width="2" height="1"/>
+    <rect x="48" y="64" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="28" y="55" width="2" height="1"/><rect x="66" y="55" width="2" height="1"/>
+    <rect x="46" y="66" width="2" height="1"/><rect x="54" y="47" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(160,0)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="48,46 62,53 50,59 36,52" fill="#635a4b"/>
+  <polygon points="34,57 44,62 40,64 30,59" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="56" y="52" width="3" height="1"/><rect x="30" y="54" width="2" height="1"/>
+    <rect x="48" y="64" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="28" y="55" width="2" height="1"/><rect x="66" y="55" width="2" height="1"/>
+    <rect x="46" y="66" width="2" height="1"/><rect x="54" y="47" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(64,16)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="40,52 54,59 44,64 30,57" fill="#635a4b"/>
+  <polygon points="54,48 64,53 58,56 48,51" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="36" y="50" width="3" height="1"/><rect x="60" y="58" width="2" height="1"/>
+    <rect x="42" y="66" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="34" y="52" width="2" height="1"/><rect x="62" y="52" width="2" height="1"/>
+    <rect x="52" y="64" width="2" height="1"/><rect x="44" y="45" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(128,16)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="48,46 62,53 50,59 36,52" fill="#635a4b"/>
+  <polygon points="34,57 44,62 40,64 30,59" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="56" y="52" width="3" height="1"/><rect x="30" y="54" width="2" height="1"/>
+    <rect x="48" y="64" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="28" y="55" width="2" height="1"/><rect x="66" y="55" width="2" height="1"/>
+    <rect x="46" y="66" width="2" height="1"/><rect x="54" y="47" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(96,32)">
+  <polygon points="48,40 80,56 48,72 16,56" fill="#5a5245"/>
+  <polygon points="40,52 54,59 44,64 30,57" fill="#635a4b"/>
+  <polygon points="54,48 64,53 58,56 48,51" fill="#524a3e"/>
+  <g fill="#6d6152">
+    <rect x="36" y="50" width="3" height="1"/><rect x="60" y="58" width="2" height="1"/>
+    <rect x="42" y="66" width="3" height="1"/>
+  </g>
+  <g fill="#355a2b">
+    <rect x="34" y="52" width="2" height="1"/><rect x="62" y="52" width="2" height="1"/>
+    <rect x="52" y="64" width="2" height="1"/><rect x="44" y="45" width="2" height="1"/>
+  </g>
+</g>
+<g transform="translate(64,-16)">
+  <g fill="#403a31">
+    <rect x="34" y="60" width="2" height="1"/><rect x="38" y="61" width="2" height="1"/>
+    <rect x="42" y="62" width="2" height="1"/><rect x="46" y="61" width="2" height="1"/>
+    <rect x="50" y="60" width="2" height="1"/>
+  </g>
+  <polygon points="34,54 38,42 44,38 50,41 54,50 56,57 46,63 36,61" fill="#6e6960"/>
+  <polygon points="38,42 44,38 50,41 48,48 40,49" fill="#8b857d"/>
+  <polygon points="40,42.5 44,39.5 48,42 46,46 41,46.5" fill="#9c968c"/>
+  <g fill="#8b857d"><rect x="41" y="46" width="2" height="1"/><rect x="45" y="46" width="2" height="1"/></g>
+  <polygon points="34,54 40,49 40,61 36,61" fill="#585349"/>
+  <polygon points="50,41 54,50 56,57 46,63 48,48" fill="#4a4741"/>
+  <g fill="#585349"><rect x="49" y="52" width="2" height="1"/><rect x="51" y="55" width="2" height="1"/></g>
+  <polygon points="50,41 56,44 54,47 50,45" fill="#8b857d"/>
+  <polygon points="50,41 56,44 54,45 51,43" fill="#b9b3a8"/>
+  <path d="M 38,42 L 44,38 L 50,41" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 36,61 L 46,63 L 56,57" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 44,38 L 43,46 L 45,52 L 43,58 L 44,63" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <g fill="#355a2b"><rect x="36" y="50" width="4" height="2"/><rect x="35" y="52" width="4" height="1"/></g>
+  <g fill="#6d7a3a"><rect x="36" y="50" width="2" height="1"/></g>
+  <rect x="58" y="55" width="3" height="2" fill="#6e6960"/><rect x="58" y="55" width="3" height="1" fill="#8b857d"/>
+  <rect x="30" y="58" width="2" height="1" fill="#585349"/>
+  <g fill="#355a2b"><rect x="33" y="58" width="1" height="3"/><rect x="57" y="58" width="1" height="2"/></g>
+</g>
+<g transform="translate(128,-16)">
+  <g fill="#403a31">
+    <rect x="30" y="61" width="3" height="1"/><rect x="36" y="62" width="3" height="1"/>
+    <rect x="42" y="63" width="3" height="1"/><rect x="48" y="62" width="3" height="1"/>
+    <rect x="54" y="60" width="3" height="1"/>
+  </g>
+  <!-- espessura: a lateral da laje, que da a leitura de bloco e nao de mancha -->
+  <polygon points="26,56 34,60 44,62 54,60 60,55 60,58 44,65 34,63 26,59" fill="#4a4741"/>
+  <!-- placa maior. Um degrau INTEIRO mais escura que r1/r2/r3: no campo a laje
+       clara lia como prato de louca no meio das pedras. -->
+  <polygon points="26,56 33,51 43,50 41,57 32,60" fill="#585349"/>
+  <polygon points="28,55.5 33,52 41,51 39,55.5 32,58" fill="#6e6960"/>
+  <g fill="#8b857d"><rect x="31" y="53" width="5" height="1"/><rect x="34" y="54" width="4" height="1"/></g>
+  <!-- placa menor, deslocada e mais baixa: a fratura separa as duas -->
+  <polygon points="45,51 55,52 60,55 54,60 44,62 42,57" fill="#585349"/>
+  <polygon points="46,52.5 54,53.5 57,55.5 52,58 46,59" fill="#6e6960"/>
+  <g fill="#8b857d"><rect x="48" y="54" width="5" height="1"/></g>
+  <!-- manchas de intemperismo, para a laje nao ser um plano liso -->
+  <g fill="#4a4741">
+    <rect x="34" y="53" width="3" height="1"/><rect x="29" y="56" width="2" height="1"/>
+    <rect x="49" y="56" width="4" height="1"/><rect x="47" y="53" width="2" height="1"/>
+  </g>
+  <!-- fratura entre as placas, em degrau -->
+  <path d="M 43,50 L 41,54 L 43,57 L 41,60 L 44,62" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <!-- fio de luz nas arestas de cima, contorno escuro no contato -->
+  <path d="M 33,51 L 43,50 M 45,51 L 55,52 L 60,55" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 26,59 L 34,63 L 44,65 L 60,58" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <!-- lascas soltas sobre a laje -->
+  <rect x="36" y="56" width="3" height="1" fill="#585349"/>
+  <rect x="50" y="56" width="2" height="1" fill="#585349"/>
+  <g fill="#355a2b">
+    <rect x="28" y="57" width="3" height="1"/><rect x="56" y="56" width="3" height="1"/>
+    <rect x="27" y="58" width="2" height="1"/>
+  </g>
+  <g fill="#6d7a3a"><rect x="28" y="57" width="2" height="1"/></g>
+  <g fill="#355a2b"><rect x="24" y="59" width="1" height="2"/><rect x="62" y="57" width="1" height="2"/></g>
+</g>
+<g transform="translate(32,0)">
+  <g fill="#403a31">
+    <rect x="32" y="62" width="2" height="1"/><rect x="36" y="63" width="2" height="1"/>
+    <rect x="40" y="64" width="2" height="1"/><rect x="44" y="65" width="2" height="1"/>
+    <rect x="48" y="64" width="2" height="1"/><rect x="52" y="63" width="2" height="1"/>
+    <rect x="56" y="61" width="2" height="1"/>
+  </g>
+  <polygon points="26,55 32,47 41,44 52,46 60,53 62,59 50,66 36,65 28,60" fill="#6e6960"/>
+  <polygon points="32,47 41,44 52,46 47,52 36,53" fill="#8b857d"/>
+  <polygon points="34,47.5 41,45 50,47 46,50 37,50.5" fill="#9c968c"/>
+  <g fill="#8b857d">
+    <rect x="37" y="50" width="2" height="1"/><rect x="42" y="50" width="2" height="1"/>
+    <rect x="46" y="50" width="2" height="1"/>
+  </g>
+  <polygon points="26,55 36,53 36,65 28,60" fill="#585349"/>
+  <polygon points="52,46 60,53 62,59 50,66 47,52" fill="#4a4741"/>
+  <g fill="#585349">
+    <rect x="52" y="56" width="2" height="1"/><rect x="55" y="58" width="2" height="1"/>
+    <rect x="53" y="61" width="2" height="1"/>
+  </g>
+  <path d="M 32,47 L 41,44 L 52,46" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 28,60 L 36,65 L 50,66 L 62,59" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 41,44 L 39,50 L 42,54 L 40,60 L 41,65" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 42,54 L 48,56" stroke="#4a4741" stroke-width="1" fill="none"/>
+  <g fill="#355a2b">
+    <rect x="29" y="56" width="5" height="2"/><rect x="28" y="58" width="6" height="2"/>
+    <rect x="30" y="60" width="4" height="1"/>
+  </g>
+  <g fill="#6d7a3a"><rect x="30" y="56" width="3" height="1"/><rect x="29" y="58" width="2" height="1"/></g>
+  <g fill="#355a2b"><rect x="35" y="57" width="1" height="1"/><rect x="27" y="60" width="1" height="1"/></g>
+  <rect x="22" y="58" width="3" height="2" fill="#6e6960"/><rect x="22" y="58" width="3" height="1" fill="#8b857d"/>
+  <rect x="64" y="57" width="2" height="2" fill="#585349"/>
+  <rect x="45" y="68" width="3" height="1" fill="#4a4741"/>
+  <g fill="#355a2b"><rect x="25" y="61" width="1" height="3"/><rect x="61" y="60" width="1" height="3"/></g>
+</g>
+<g transform="translate(96,0)">
+  <g fill="#403a31">
+    <rect x="28" y="60" width="2" height="1"/><rect x="32" y="61" width="2" height="1"/>
+    <rect x="44" y="63" width="2" height="1"/><rect x="48" y="62" width="2" height="1"/>
+    <rect x="54" y="59" width="2" height="1"/>
+  </g>
+  <polygon points="52,52 56,46 62,45 66,50 64,56 56,58" fill="#585349"/>
+  <polygon points="56,46 62,45 64,50 58,51" fill="#6e6960"/>
+  <path d="M 56,46 L 62,45" stroke="#8b857d" stroke-width="1" fill="none"/>
+  <path d="M 56,58 L 64,56" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <polygon points="26,57 31,49 38,46 46,49 50,56 44,63 32,62" fill="#6e6960"/>
+  <polygon points="31,49 38,46 46,49 42,54 34,54" fill="#8b857d"/>
+  <polygon points="33,49.5 38,47 44,49.5 40,52 35,52" fill="#9c968c"/>
+  <g fill="#8b857d"><rect x="35" y="52" width="2" height="1"/><rect x="39" y="52" width="2" height="1"/></g>
+  <polygon points="26,57 34,54 32,62" fill="#585349"/>
+  <polygon points="46,49 50,56 44,63 42,54" fill="#4a4741"/>
+  <path d="M 31,49 L 38,46 L 46,49" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 32,62 L 44,63 L 50,56" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 38,46 L 36,52 L 38,57 L 37,62" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <g fill="#355a2b"><rect x="43" y="56" width="4" height="2"/><rect x="43" y="58" width="3" height="1"/></g>
+  <g fill="#6d7a3a"><rect x="44" y="56" width="2" height="1"/></g>
+  <rect x="22" y="57" width="2" height="2" fill="#6e6960"/>
+  <rect x="52" y="60" width="3" height="1" fill="#4a4741"/>
+  <g fill="#355a2b"><rect x="25" y="60" width="1" height="3"/><rect x="51" y="58" width="1" height="2"/></g>
+</g>
+<g transform="translate(160,0)">
+  <g fill="#403a31">
+    <rect x="32" y="62" width="2" height="1"/><rect x="36" y="63" width="2" height="1"/>
+    <rect x="40" y="64" width="2" height="1"/><rect x="44" y="65" width="2" height="1"/>
+    <rect x="48" y="64" width="2" height="1"/><rect x="52" y="63" width="2" height="1"/>
+    <rect x="56" y="61" width="2" height="1"/>
+  </g>
+  <polygon points="26,55 32,47 41,44 52,46 60,53 62,59 50,66 36,65 28,60" fill="#6e6960"/>
+  <polygon points="32,47 41,44 52,46 47,52 36,53" fill="#8b857d"/>
+  <polygon points="34,47.5 41,45 50,47 46,50 37,50.5" fill="#9c968c"/>
+  <g fill="#8b857d">
+    <rect x="37" y="50" width="2" height="1"/><rect x="42" y="50" width="2" height="1"/>
+    <rect x="46" y="50" width="2" height="1"/>
+  </g>
+  <polygon points="26,55 36,53 36,65 28,60" fill="#585349"/>
+  <polygon points="52,46 60,53 62,59 50,66 47,52" fill="#4a4741"/>
+  <g fill="#585349">
+    <rect x="52" y="56" width="2" height="1"/><rect x="55" y="58" width="2" height="1"/>
+    <rect x="53" y="61" width="2" height="1"/>
+  </g>
+  <path d="M 32,47 L 41,44 L 52,46" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 28,60 L 36,65 L 50,66 L 62,59" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 41,44 L 39,50 L 42,54 L 40,60 L 41,65" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 42,54 L 48,56" stroke="#4a4741" stroke-width="1" fill="none"/>
+  <g fill="#355a2b">
+    <rect x="29" y="56" width="5" height="2"/><rect x="28" y="58" width="6" height="2"/>
+    <rect x="30" y="60" width="4" height="1"/>
+  </g>
+  <g fill="#6d7a3a"><rect x="30" y="56" width="3" height="1"/><rect x="29" y="58" width="2" height="1"/></g>
+  <g fill="#355a2b"><rect x="35" y="57" width="1" height="1"/><rect x="27" y="60" width="1" height="1"/></g>
+  <rect x="22" y="58" width="3" height="2" fill="#6e6960"/><rect x="22" y="58" width="3" height="1" fill="#8b857d"/>
+  <rect x="64" y="57" width="2" height="2" fill="#585349"/>
+  <rect x="45" y="68" width="3" height="1" fill="#4a4741"/>
+  <g fill="#355a2b"><rect x="25" y="61" width="1" height="3"/><rect x="61" y="60" width="1" height="3"/></g>
+</g>
+<g transform="translate(64,16)">
+  <g fill="#403a31">
+    <rect x="30" y="61" width="3" height="1"/><rect x="36" y="62" width="3" height="1"/>
+    <rect x="42" y="63" width="3" height="1"/><rect x="48" y="62" width="3" height="1"/>
+    <rect x="54" y="60" width="3" height="1"/>
+  </g>
+  <!-- espessura: a lateral da laje, que da a leitura de bloco e nao de mancha -->
+  <polygon points="26,56 34,60 44,62 54,60 60,55 60,58 44,65 34,63 26,59" fill="#4a4741"/>
+  <!-- placa maior. Um degrau INTEIRO mais escura que r1/r2/r3: no campo a laje
+       clara lia como prato de louca no meio das pedras. -->
+  <polygon points="26,56 33,51 43,50 41,57 32,60" fill="#585349"/>
+  <polygon points="28,55.5 33,52 41,51 39,55.5 32,58" fill="#6e6960"/>
+  <g fill="#8b857d"><rect x="31" y="53" width="5" height="1"/><rect x="34" y="54" width="4" height="1"/></g>
+  <!-- placa menor, deslocada e mais baixa: a fratura separa as duas -->
+  <polygon points="45,51 55,52 60,55 54,60 44,62 42,57" fill="#585349"/>
+  <polygon points="46,52.5 54,53.5 57,55.5 52,58 46,59" fill="#6e6960"/>
+  <g fill="#8b857d"><rect x="48" y="54" width="5" height="1"/></g>
+  <!-- manchas de intemperismo, para a laje nao ser um plano liso -->
+  <g fill="#4a4741">
+    <rect x="34" y="53" width="3" height="1"/><rect x="29" y="56" width="2" height="1"/>
+    <rect x="49" y="56" width="4" height="1"/><rect x="47" y="53" width="2" height="1"/>
+  </g>
+  <!-- fratura entre as placas, em degrau -->
+  <path d="M 43,50 L 41,54 L 43,57 L 41,60 L 44,62" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <!-- fio de luz nas arestas de cima, contorno escuro no contato -->
+  <path d="M 33,51 L 43,50 M 45,51 L 55,52 L 60,55" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 26,59 L 34,63 L 44,65 L 60,58" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <!-- lascas soltas sobre a laje -->
+  <rect x="36" y="56" width="3" height="1" fill="#585349"/>
+  <rect x="50" y="56" width="2" height="1" fill="#585349"/>
+  <g fill="#355a2b">
+    <rect x="28" y="57" width="3" height="1"/><rect x="56" y="56" width="3" height="1"/>
+    <rect x="27" y="58" width="2" height="1"/>
+  </g>
+  <g fill="#6d7a3a"><rect x="28" y="57" width="2" height="1"/></g>
+  <g fill="#355a2b"><rect x="24" y="59" width="1" height="2"/><rect x="62" y="57" width="1" height="2"/></g>
+</g>
+<g transform="translate(128,16)">
+  <g fill="#403a31">
+    <rect x="34" y="60" width="2" height="1"/><rect x="38" y="61" width="2" height="1"/>
+    <rect x="42" y="62" width="2" height="1"/><rect x="46" y="61" width="2" height="1"/>
+    <rect x="50" y="60" width="2" height="1"/>
+  </g>
+  <polygon points="34,54 38,42 44,38 50,41 54,50 56,57 46,63 36,61" fill="#6e6960"/>
+  <polygon points="38,42 44,38 50,41 48,48 40,49" fill="#8b857d"/>
+  <polygon points="40,42.5 44,39.5 48,42 46,46 41,46.5" fill="#9c968c"/>
+  <g fill="#8b857d"><rect x="41" y="46" width="2" height="1"/><rect x="45" y="46" width="2" height="1"/></g>
+  <polygon points="34,54 40,49 40,61 36,61" fill="#585349"/>
+  <polygon points="50,41 54,50 56,57 46,63 48,48" fill="#4a4741"/>
+  <g fill="#585349"><rect x="49" y="52" width="2" height="1"/><rect x="51" y="55" width="2" height="1"/></g>
+  <polygon points="50,41 56,44 54,47 50,45" fill="#8b857d"/>
+  <polygon points="50,41 56,44 54,45 51,43" fill="#b9b3a8"/>
+  <path d="M 38,42 L 44,38 L 50,41" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 36,61 L 46,63 L 56,57" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 44,38 L 43,46 L 45,52 L 43,58 L 44,63" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <g fill="#355a2b"><rect x="36" y="50" width="4" height="2"/><rect x="35" y="52" width="4" height="1"/></g>
+  <g fill="#6d7a3a"><rect x="36" y="50" width="2" height="1"/></g>
+  <rect x="58" y="55" width="3" height="2" fill="#6e6960"/><rect x="58" y="55" width="3" height="1" fill="#8b857d"/>
+  <rect x="30" y="58" width="2" height="1" fill="#585349"/>
+  <g fill="#355a2b"><rect x="33" y="58" width="1" height="3"/><rect x="57" y="58" width="1" height="2"/></g>
+</g>
+<g transform="translate(96,32)">
+  <g fill="#403a31">
+    <rect x="28" y="60" width="2" height="1"/><rect x="32" y="61" width="2" height="1"/>
+    <rect x="44" y="63" width="2" height="1"/><rect x="48" y="62" width="2" height="1"/>
+    <rect x="54" y="59" width="2" height="1"/>
+  </g>
+  <polygon points="52,52 56,46 62,45 66,50 64,56 56,58" fill="#585349"/>
+  <polygon points="56,46 62,45 64,50 58,51" fill="#6e6960"/>
+  <path d="M 56,46 L 62,45" stroke="#8b857d" stroke-width="1" fill="none"/>
+  <path d="M 56,58 L 64,56" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <polygon points="26,57 31,49 38,46 46,49 50,56 44,63 32,62" fill="#6e6960"/>
+  <polygon points="31,49 38,46 46,49 42,54 34,54" fill="#8b857d"/>
+  <polygon points="33,49.5 38,47 44,49.5 40,52 35,52" fill="#9c968c"/>
+  <g fill="#8b857d"><rect x="35" y="52" width="2" height="1"/><rect x="39" y="52" width="2" height="1"/></g>
+  <polygon points="26,57 34,54 32,62" fill="#585349"/>
+  <polygon points="46,49 50,56 44,63 42,54" fill="#4a4741"/>
+  <path d="M 31,49 L 38,46 L 46,49" stroke="#b9b3a8" stroke-width="1" fill="none"/>
+  <path d="M 32,62 L 44,63 L 50,56" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <path d="M 38,46 L 36,52 L 38,57 L 37,62" stroke="#302e2a" stroke-width="1" fill="none"/>
+  <g fill="#355a2b"><rect x="43" y="56" width="4" height="2"/><rect x="43" y="58" width="3" height="1"/></g>
+  <g fill="#6d7a3a"><rect x="44" y="56" width="2" height="1"/></g>
+  <rect x="22" y="57" width="2" height="2" fill="#6e6960"/>
+  <rect x="52" y="60" width="3" height="1" fill="#4a4741"/>
+  <g fill="#355a2b"><rect x="25" y="60" width="1" height="3"/><rect x="51" y="58" width="1" height="2"/></g>
+</g>
+</svg>

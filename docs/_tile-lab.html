@@ -1,0 +1,345 @@
+<meta charset="utf-8">
+<title>OIKOS — laboratório de tile (descartável)</title>
+<style>
+  body { margin:0; padding:20px; background:#14171c; color:#cbbf87;
+         font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  h2 { font-size:12px; color:#f59e0b; letter-spacing:1px; margin:22px 0 6px; }
+  p.n { color:#8e855e; margin:0 0 10px; max-width:860px; line-height:1.5; }
+  .fila { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+  .caixa { background:#1b1f26; border:1px solid #2c313a; padding:8px; }
+  .rot { color:#8e855e; font-size:10px; margin-top:4px; text-align:center; }
+  svg { display:block; }
+  .pal { display:flex; margin:2px 0 14px; }
+  .pal i { width:52px; height:24px; display:block; }
+  .pal span { font-size:9px; color:#8e855e; display:block; text-align:center; margin-top:2px; }
+</style>
+
+<!-- Laboratorio descartavel.
+     CONSTRUCAO (da referencia pedra.png): a rocha NAO e uma massa unica
+     facetada — e um AMONTOADO de cuboides pequenos. Cada bloco tem tres
+     planos chapados (topo, frente-esquerda, direita) e quase nenhuma textura
+     interna. A complexidade vem da quantidade e do arranjo, nao do
+     sombreamento de uma peca so. Pilha maior = mais blocos, o que casa
+     direto com o merge por tiles. -->
+
+<div class="pal">
+  <div><i style="background:#d8cdb4"></i><span>#d8cdb4</span></div>
+  <div><i style="background:#c2b69c"></i><span>#c2b69c</span></div>
+  <div><i style="background:#9a8e78"></i><span>#9a8e78</span></div>
+  <div><i style="background:#837860"></i><span>#837860</span></div>
+  <div><i style="background:#5f5647"></i><span>#5f5647</span></div>
+  <div><i style="background:#423a2f"></i><span>#423a2f</span></div>
+  <div><i style="background:#2e2820"></i><span>#2e2820</span></div>
+  <div><i style="background:#4f4738"></i><span>#4f4738</span></div>
+</div>
+
+<h2>1 · UMA PEDRINHA — um tile ocupado</h2>
+<div class="fila">
+  <div class="caixa"><svg id="s1a" width="384" height="240" viewBox="0 0 128 80"></svg><div class="rot">montado · 3×</div></div>
+  <div class="caixa"><svg id="s1b" width="128" height="80" viewBox="0 0 128 80"></svg><div class="rot">tamanho real · 1×</div></div>
+</div>
+
+<h2>2 · DOIS TILES = UMA PEDRA MAIOR</h2>
+<p class="n">A mesma pilha, recortada em dois. Montado, a junta some. Explodido,
+dá para ver que são duas peças de tile.</p>
+<div class="fila">
+  <div class="caixa"><svg id="s2a" width="480" height="264" viewBox="0 0 160 88"></svg><div class="rot">montado · 3×</div></div>
+  <div class="caixa"><svg id="s2b" width="480" height="264" viewBox="0 0 160 88"></svg><div class="rot">explodido</div></div>
+</div>
+
+<h2>3 · QUATRO TILES = MACIÇO</h2>
+<div class="fila">
+  <div class="caixa"><svg id="s3a" width="576" height="312" viewBox="0 0 192 104"></svg><div class="rot">montado · 3×</div></div>
+</div>
+
+<h2>4 · CAMPO</h2>
+<div class="fila">
+  <div class="caixa"><svg id="s4" width="576" height="280" viewBox="0 0 288 140"></svg><div class="rot">1 + 2 + 4 tiles</div></div>
+</div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+// Paleta MEDIDA na referencia (pedra.png), por frequencia de area:
+//   #9b8a72 21% (dominante, face de topo) · #776453 15% (frente) ·
+//   #55453c 16% (direita) · #3f332c 5% (fenda) · #beb294 4% (realce) ·
+//   #2a221e 4% (contato). O realce ocupa so 4% — eu vinha pintando o topo
+//   inteiro de claro, que e o que deixava a pedra lavada.
+const C = { topo:'#9b8a72', topoLuz:'#beb294', alto:'#ab9a81', frente:'#776453',
+            quina:'#665548', dir:'#55453c', fenda:'#3f332c', contato:'#2a221e',
+            terra:'#4f4738', terraEsc:'#453e31', terraClara:'#574c3b', sombra:'#3d3425' };
+
+function el(pai, tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  pai.appendChild(e); return e;
+}
+const pts = a => a.map(p => p[0] + ',' + p[1]).join(' ');
+
+// BLOCO: cuboide dimetrico. (x,y) e o centro da base; w meia-largura; v altura.
+// Tres planos chapados + 1px de luz na aresta de tras do topo. Coordenada
+// inteira sempre — o arredondamento acontece aqui, nunca no desenho.
+// tom: 0 = normal · 1 = escuro (bloco recuado) · 2 = claro (pega o sol)
+// O realce precisa de AREA: medindo a referencia ele ocupa 4,4%, e no meu
+// desenho so existia como aresta de 1px, somando quase nada.
+function bloco(g, x, y, w, v, tom) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); v = Math.round(v);
+  const h = Math.round(w / 2);
+  const escuro = tom === 1, claro = tom === 2;
+  const topo = claro ? C.topoLuz : escuro ? C.alto : C.topo;
+  const fre  = claro ? C.topo : escuro ? C.dir : C.frente;
+  const dir  = claro ? C.frente : escuro ? C.fenda : C.dir;
+
+  // CHANFRO: vertice vivo le como caixa usinada. Cortando a quina, o topo vira
+  // OCTOGONO e a aresta vertical da frente vira uma TIRA de bevel — terceira
+  // face visivel, que e o que tira a leitura de cubo. Chanfro proporcional ao
+  // bloco: 2 px nos maiores, 1 px nos menores.
+  // Corte de canto de 2 px no topo e tira de bevel de 2 px FIXOS. A versao
+  // anterior recuava os dois extremos da face lateral em 2c cada, comendo 4c
+  // de uma face de largura w: com w=5 a face esquerda virava 1 px e com w=7
+  // degenerava. Aqui o recuo e de 1 px e a tira tem largura constante, entao
+  // as laterais continuam inteiras e so a quina fica comida.
+  // Chanfro SO em bloco grande. Com w=5 (10 px de largura) cortar 2 px de cada
+  // canto num topo de 8x4 vira elipse, e com a tira de bevel no meio o bloco
+  // le como CILINDRO. Bloco pequeno nao tem pixel para carregar chanfro e face
+  // legivel ao mesmo tempo: fica de quina viva.
+  // A QUINA VIRA PLANO. Corta-se so a ponta da FRENTE e a do FUNDO do losango
+  // do topo: ele passa de 4 para 6 lados (hexagono), as pontas esquerda e
+  // direita continuam vivas, e o miolo segue sendo caixa de 4 arestas. O corte
+  // da frente NAO e uma tira decorativa — ele e a face nova da quina.
+  // Antes eu cortava as quatro pontas (octogono) e deixava a quina reta: o
+  // inverso do que a forma pede.
+  // O corte tem de ser LASCA, nao face dominante. Com a = 2t o plano da quina
+  // saia com 4 px nos blocos pequenos e 8 px nos grandes, contra pecas de 10 a
+  // 18 px: 40% do bloco virava quina, a esquerda e a direita sumiam e a leitura
+  // era de cilindro. Aqui o plano tem 2 px, 4 so nos maiores.
+  // O corte e um TRIANGULO na ponta do topo — a quina onde tres faces se
+  // encontram e fatiada e nasce uma facetinha de 3 lados. Ele fica SO no alto:
+  // abaixo dele a aresta vertical continua viva. Antes eu descia uma tira de
+  // altura inteira, o que transformava um corte de ponta numa quarta face e
+  // fazia o bloco ler como cilindro.
+  const a = w >= 9 ? 4 : 2, dd = Math.max(1, a / 2);
+
+  // topo hexagonal: pontas da frente e do fundo cortadas, laterais vivas
+  el(g, 'polygon', { points: pts([
+    [x-a, y-v-h+dd], [x+a, y-v-h+dd],
+    [x+w, y-v],
+    [x+a, y-v+h-dd], [x-a, y-v+h-dd],
+    [x-w, y-v]
+  ]), fill: topo });
+
+  // faces laterais: descem ate a ponta do triangulo e seguem pela aresta viva
+  el(g, 'polygon', { points: pts([
+    [x-w, y-v], [x-a, y-v+h-dd], [x, y-v+h+dd], [x, y+h], [x-w, y]
+  ]), fill: fre });
+  el(g, 'polygon', { points: pts([
+    [x+w, y-v], [x+a, y-v+h-dd], [x, y-v+h+dd], [x, y+h], [x+w, y]
+  ]), fill: dir });
+
+  // TRIANGULO DA QUINA: a facetinha de 3 lados que o corte cria
+  el(g, 'polygon', { points: pts([
+    [x-a, y-v+h-dd], [x+a, y-v+h-dd], [x, y-v+h+dd]
+  ]), fill: claro ? C.frente : escuro ? C.contato : C.quina });
+
+  // aresta de luz nas duas arestas de tras, ja cortadas
+  el(g, 'path', { d: `M ${x-w},${y-v} L ${x-a},${y-v-h+dd} L ${x+a},${y-v-h+dd} L ${x+w},${y-v}`,
+                  stroke: escuro ? C.topo : C.topoLuz, 'stroke-width': 1, fill: 'none' });
+}
+
+// PILHA: lista de blocos ja em ordem de pintor (tras para a frente).
+function pilha(g, blocos) { for (const b of blocos) bloco(g, b[0], b[1], b[2], b[3], b[4]); }
+
+// ---- desenhos das tres massas, em coordenadas de tile (tile 0,0 = 48,32) ----
+// PATAMARES. O erro anterior era ter todos os blocos com a base no MESMO
+// solo, variando so o x: virava grade de caixas espalhadas. Aqui cada camada
+// tem a base ERGUIDA sobre a de baixo e menos blocos, formando piramide como
+// na referencia. Ordem = y crescente: topo-fundo primeiro, frente-baixa por
+// ultimo, que e a ordem do pintor de uma pilha.
+// Proporcao 1:1 (largura = altura), medida na referencia. As pilhas anteriores
+// eram 44x35 e se espalhavam mais do que subiam; por isso liam como grade de
+// caixas. Mais patamares, recuo horizontal curto, sobreposicao forte.
+// Blocos ALTOS e ESTREITOS (w 5-7, v 13-15). Com w 7-9 e v 9-10 o topo
+// somava 31% da area e as laterais 15%; a referencia quer o inverso. Cubo
+// estreito e alto mostra pouco topo e muita face lateral.
+// Espacamento horizontal APERTADO (~10 px entre centros, para blocos de 12-16
+// px de largura): os vizinhos se encobrem em vez de ficar lado a lado. Com
+// espacamento de 12-14 a pilha se desmanchava em cubos avulsos e o chao
+// aparecia entre eles. Adensar tambem estreita a silhueta, corrigindo a
+// proporcao (estava 1,25 e 1,49; alvo 1,02).
+// Espacamento de 8 px entre centros, ABAIXO da largura do bloco (14-16 px):
+// cada bloco encobre o vizinho em ~6 px de cada lado. Com espacamento de 10 os
+// blocos so encostavam, e a densidade media ficou em 58% — quase metade da
+// silhueta era chao aparecendo entre as pecas. Pilha de verdade e macica.
+// TAMANHO VARIADO e profundidade escalonada. Com blocos iguais em treliça
+// regular, densidade e face escura brigam: cada bloco cobre a face direita do
+// vizinho, e #55453c caiu para 4,7% (alvo 16%). Aqui bloco grande alterna com
+// pequeno e alguns avancam enquanto outros recuam, deixando a face direita
+// exposta — que e o que a referencia faz. Larguras 5-9, alturas 10-18.
+// Realce com AREA: os blocos do alto levam tom 2 (face de topo em #beb294).
+// So como aresta de 1px ele somava 0,5% da area contra 4% da referencia.
+// MENOS blocos e MAIORES. Com w=5 o bloco tem 10 px e o topo vira um hexagono
+// de 10x4 — nesse tamanho seis lados curtos sao indistinguiveis de uma elipse,
+// e o chanfro dissolve em vez de aparecer. O desenho do dono mostra pedacos
+// grandes, com o corte triangular visivel: 4 pedacos de 16-18 px numa
+// pedrinha, nao 9 de 10 px.
+const P1 = [ // 1 tile — 4 pedacos
+  // Blocos INTERPENETRADOS (~50% de sobreposicao). Sem o recorte, que antes
+  // colava tudo visualmente, o espacamento antigo deixava caixas separadas com
+  // vao entre elas. Bloco de montanha e massa unica de pedacos inteiros.
+  // Blocos BAIXOS e largos. Area do topo ~ w^2, area da face esquerda ~ w*v:
+  // com w=9 e v=17 a frente valia o dobro do topo (31% contra 12%). A
+  // referencia quer topo 21 e frente 15, o que exige w maior que v.
+  // PROPORCOES MISTURADAS. Com todos os blocos na mesma forma os quatro tons
+  // ficam acoplados: baixar a frente derruba o escuro e infla o realce. Bloco
+  // baixo e largo alimenta topo; bloco alto e estreito alimenta frente e
+  // escuro. Misturando, cada tom se ajusta sem arrastar os outros.
+  // BLOCO DE MONTANHA: mesma planta, mesma largura, mesma contagem. So a ALTURA
+  // (v) dobra — e a altura que faz a borda de cima aparecer e o conjunto ler
+  // como macico em vez de cascalho.
+  // So a ALTURA muda. Nao uniforme: v cresce no centro e cai nas abas, senao
+  // vira cerca de chamines. Teto pratico v ~ 2.5*w — acima disso o bloco le
+  // como coluna, nao como pedaco de montanha.
+  [47,34,10,26,2],
+  [38,41,7,14], [56,40,9,17,1],
+  [47,46,8,13]
+];
+const P2 = [ // 2 tiles — 7 pedacos
+  [62,34,10,26,2],
+  [52,41,7,16], [72,40,9,20,1],
+  [42,47,8,12], [62,46,10,22,2], [82,45,7,13,1],
+  [52,52,9,13], [72,52,8,12]
+];
+const P3 = [ // 4 tiles — 11 pedacos
+  [50,32,10,30,2],
+  [40,39,7,18], [60,38,9,24,1],
+  [30,45,8,12], [50,44,10,24,2], [70,44,7,15,1],
+  [38,51,9,14], [58,51,10,16], [78,50,7,12,1],
+  [46,57,9,12], [66,57,8,11]
+];
+
+// ---- terreno ----
+function chao(pai, ox, oy) {
+  const g = el(pai, 'g', { transform: `translate(${ox},${oy})` });
+  el(g, 'polygon', { points: '48,16 80,32 48,48 16,32', fill: C.terra });
+  el(g, 'polygon', { points: '48,22 62,29 50,35 36,28', fill: C.terraClara });
+  el(g, 'polygon', { points: '34,33 44,38 40,40 30,35', fill: C.terraEsc });
+  [[56,28,3],[30,30,2],[44,41,3],[62,34,2]].forEach(([x,y,w]) =>
+    el(g, 'rect', { x, y, width: w, height: 1, fill: C.sombra }));
+  return g;
+}
+
+// ---- sombra projetada, recortada pelos tiles ocupados ----
+// Derivada dos blocos, nao digitada. O poligono fixo anterior tinha sido
+// desenhado para a pilha baixa: quando a altura subiu, ele ficou parado e a
+// pedra passou a flutuar. Aqui a sombra de cada bloco e o losango da BASE
+// varrido pelo vetor de luz — a base entra no resultado, entao a sombra
+// encosta no pe por construcao, qualquer que seja v.
+const cascoConvexo = (ps) => {
+  ps = ps.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const h = [];
+  for (const p of ps) { while (h.length > 1 && cr(h[h.length-2], h[h.length-1], p) <= 0) h.pop(); h.push(p); }
+  const base = h.length + 1;
+  for (let i = ps.length - 2; i >= 0; i--) {
+    const p = ps[i];
+    while (h.length >= base && cr(h[h.length-2], h[h.length-1], p) <= 0) h.pop();
+    h.push(p);
+  }
+  h.pop();
+  return h;
+};
+
+function sombra(pai, clip, blocos) {
+  const g = el(pai, 'g', { 'clip-path': `url(#${clip})` });
+  let tip = null;
+  blocos.forEach(([x, y, w, v]) => {
+    const h = w / 2;
+    // varredura no plano do chao: mesma inclinacao 2:1 do terreno
+    const ox = v * 0.6, oy = v * 0.3;
+    const dia = [[x-w, y], [x, y-h], [x+w, y], [x, y+h]];
+    const casco = cascoConvexo(dia.concat(dia.map(([a, b]) => [a+ox, b+oy])));
+    el(g, 'polygon', { points: casco.map(p => p.map(n => n.toFixed(1)).join(',')).join(' '),
+                       fill: C.sombra });
+    casco.forEach(p => { if (!tip || p[0] + 2*p[1] > tip[0] + 2*tip[1]) tip = p; });
+  });
+  // dither so na ponta, onde a sombra encontra o chao iluminado
+  if (tip) [[0,0,3],[2,1,3],[-3,2,2],[1,2,2]].forEach(([dx, dy, dw]) =>
+    el(g, 'rect', { x: (tip[0]+dx).toFixed(1), y: (tip[1]+dy).toFixed(1),
+                    width: dw, height: 1, fill: C.sombra }));
+}
+
+function clips(pai) {
+  const d = el(pai, 'defs', {});
+  const mk = (id, polys) => {
+    const c = el(d, 'clipPath', { id });
+    polys.forEach(p => el(c, 'polygon', { points: p }));
+  };
+  const t00 = '48,16 80,32 48,48 16,32', t10 = '80,32 112,48 80,64 48,48';
+  const t01 = '16,32 48,48 16,64 -16,48', t11 = '48,48 80,64 48,80 16,64';
+  mk('d00', [t00]); mk('d10', [t10]); mk('d01', [t01]); mk('d11', [t11]);
+  mk('d2', [t00, t10]); mk('d4', [t00, t10, t01, t11]);
+}
+
+// ATRIBUICAO POR BASE, nao recorte geometrico. Cada bloco pertence ao tile que
+// contem o seu pe, e e desenhado INTEIRO — transbordando o losango se precisar.
+// Recortar a pilha pelo losango de cada tile fatiava todo bloco que cruzava a
+// fronteira, e a aresta cortada aparecia justamente no topo, que e onde a
+// altura do bloco se le. Tileset de verdade deixa o sprite extrapolar a celula
+// e resolve a sobreposicao pela ordem do pintor.
+function tileDoBloco(bx, by, tiles) {
+  let melhor = 0, menor = Infinity;
+  tiles.forEach(([dx, dy], i) => {
+    const cx = 48 + dx, cy = 32 + dy;
+    const d = Math.abs(bx - cx) / 32 + Math.abs(by - cy) / 16;
+    if (d < menor) { menor = d; melhor = i; }
+  });
+  return melhor;
+}
+
+function montar(svg, tiles, clip, blocos, explodir) {
+  clips(svg);
+  if (!explodir) tiles.forEach(([x, y]) => chao(svg, x, y));
+  if (!explodir) sombra(svg, clip, blocos);
+
+  // reparte os blocos entre os tiles ocupados
+  const porTile = tiles.map(() => []);
+  blocos.forEach(b => porTile[tileDoBloco(b[0], b[1], tiles)].push(b));
+
+  // desenha tile a tile, de tras para a frente, cada bloco inteiro
+  tiles.forEach((t, i) => {
+    const dx = explodir ? (i === 0 ? 0 : 18) : 0;
+    const dy = explodir ? (i === 0 ? 0 : 9) : 0;
+    const gi = el(svg, 'g', { transform: `translate(${dx},${dy})` });
+    pilha(gi, porTile[i]);
+  });
+}
+
+montar(document.getElementById('s1a'), [[0,0]], 'd00', P1, false);
+montar(document.getElementById('s1b'), [[0,0]], 'd00', P1, false);
+montar(document.getElementById('s2a'), [[0,0],[32,16]], 'd2', P2, false);
+montar(document.getElementById('s2b'), [[0,0],[32,16]], 'd2', P2, true);
+montar(document.getElementById('s3a'), [[0,0],[32,16],[-32,16],[0,32]], 'd4', P3, false);
+
+// ---- campo ----
+(function campo() {
+  const svg = document.getElementById('s4');
+  clips(svg);
+  for (let i = -1; i < 5; i++) for (let j = -1; j < 5; j++) {
+    const x = (i - j) * 32, y = (i + j) * 16;
+    if (x < -80 || x > 240 || y < -32 || y > 120) continue;
+    chao(svg, x, y);
+  }
+  // A SOMBRA continua recortada — ela deita no chao e nao pode invadir o
+  // vizinho. A PILHA e desenhada UMA vez e inteira: antes ela era desenhada
+  // uma vez por tile, cada copia recortada, o que fatiava os blocos na
+  // fronteira e ainda os desenhava em duplicata.
+  const grupo = (dx, dy, clipsUsados, blocos) => {
+    const g = el(svg, 'g', { transform: `translate(${dx},${dy})` });
+    sombra(g, clipsUsados.length === 1 ? 'd00' : clipsUsados.length === 2 ? 'd2' : 'd4', blocos);
+    pilha(el(g, 'g', {}), blocos);
+  };
+  grupo(-16, 8, ['d00'], P1);
+  grupo(16, 56, ['d00'], P1);
+  grupo(80, 0, ['d00','d10'], P2);
+  grupo(112, 40, ['d00','d10','d01','d11'], P3);
+})();
+</script>
