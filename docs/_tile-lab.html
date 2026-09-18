@@ -77,9 +77,12 @@ se a mordida na aresta e o estrato não lerem no painel 1× da seção 1, a dose
 
 <script>
 const NS = 'http://www.w3.org/2000/svg';
-const C = { topo:'#9b8a72', topoLuz:'#beb294', luzMax:'#d8cdb4', alto:'#ab9a81',
-            frente:'#776453', quina:'#665548', dir:'#55453c', fenda:'#3f332c',
-            contato:'#2a221e', traco:'#211b15',
+// ---- paleta: a medida vale; 4 tons NOVOS completam as rampas ----
+const C = { topo:'#9b8a72', topoLuz:'#beb294', luzMax:'#d8cdb4',
+            topoSE:'#87785f',
+            frenteC:'#8a7663', frente:'#776453', frenteE:'#63523f',
+            quina:'#665548', dir:'#55453c', dirE:'#463a30',
+            fenda:'#3f332c', contato:'#2a221e', traco:'#241c13',
             terra:'#4f4738', terraEsc:'#453e31', terraClara:'#574c3b', sombra:'#3d3425' };
 
 // 'contorno' = linha escura fechando cada bloco, como a etapa Outline do
@@ -114,192 +117,10 @@ function noPolig(pol, qx, qy) {
   return !(pos && neg);
 }
 
-function bloco(g, x, y, w, v, tom) {
-  x = Math.round(x); y = Math.round(y); w = Math.round(w); v = Math.round(v);
-  const h = Math.round(w / 2);
-  const escuro = tom === 1, claro = tom === 2;
-  const aberto = MODO === 'degrau';
-  const topo = aberto ? (claro ? C.luzMax : escuro ? C.topo   : C.topoLuz)
-                      : (claro ? C.topoLuz : escuro ? C.alto  : C.topo);
-  const fre  = aberto ? (claro ? C.quina  : escuro ? C.fenda  : C.dir)
-                      : (claro ? C.topo   : escuro ? C.dir    : C.frente);
-  const dir  = aberto ? (claro ? C.fenda  : escuro ? C.contato : C.fenda)
-                      : (claro ? C.frente : escuro ? C.fenda   : C.dir);
-  const a = w >= 9 ? 4 : 2, dd = Math.max(1, a / 2);
-  const seed = (x * 73 + y * 149 + w * 7 + v * 13) >>> 0;
 
-  // rampa do topo: tres bandas NW->SE; a costura entre bandas e xadrez
-  const tonsR = claro ? [C.topo, C.topoLuz, C.luzMax]
-              : escuro ? [C.dir, C.alto, C.topo]
-                       : [C.alto, C.topo, C.topoLuz];
-  const fEsc = claro ? C.frente : escuro ? C.fenda : C.dir;
-  const fLuz = claro ? C.alto   : escuro ? C.quina : C.alto;
 
-  const silhueta = `M ${x-w},${y-v} L ${x-a},${y-v-h+dd} L ${x+a},${y-v-h+dd}` +
-                   ` L ${x+w},${y-v} L ${x+w},${y} L ${x},${y+h} L ${x-w},${y} Z`;
-  if (MODO === 'contorno') el(g, 'path', { d: silhueta, fill: C.traco, stroke: C.traco, 'stroke-width': 2 });
 
-  const hexTopo = [[x-a,y-v-h+dd],[x+a,y-v-h+dd],[x+w,y-v],
-                   [x+a,y-v+h-dd],[x-a,y-v+h-dd],[x-w,y-v]];
-  el(g, 'polygon', { points: pts(hexTopo), fill: topo });
-  el(g, 'polygon', { points: pts([[x-w,y-v],[x-a,y-v+h-dd],[x,y-v+h+dd],[x,y+h],[x-w,y]]), fill: fre });
-  el(g, 'polygon', { points: pts([[x+w,y-v],[x+a,y-v+h-dd],[x,y-v+h+dd],[x,y+h],[x+w,y]]), fill: dir });
-  el(g, 'polygon', { points: pts([[x-a,y-v+h-dd],[x+a,y-v+h-dd],[x,y-v+h+dd]]),
-                    fill: claro ? C.frente : escuro ? C.contato : C.quina });
 
-  // costura vertical entre as faces, apagando em xadrez na metade de baixo
-  const yv0 = y - v + h + dd, yv1 = y + h, meio = Math.floor((yv1 - yv0) * 0.55);
-  for (let yy = yv0; yy < yv1; yy++) {
-    if (yy - yv0 > meio && ((x + yy) & 1) === 1) continue;
-    pix(g, x, yy, 1, 1, escuro ? C.contato : C.fenda);
-  }
-
-  // textura
-  texTopo(g, x, y, w, v, a, dd, h, hexTopo, tonsR, seed);
-  texFrente(g, x, y, w, v, h, fEsc, fLuz, (seed ^ 0x51ab) >>> 0);
-  texDir(g, x, y, w, v, h, claro ? C.quina : escuro ? C.contato : C.fenda, (seed ^ 0x27d4) >>> 0);
-
-  // ARESTA DE LUZ DESCONTINUA: por pixel, nao por stroke. Forte no NW, um
-  // tom abaixo no miolo, apaga em xadrez rumo a leste. No modo degrau ela
-  // comeca a apagar mais cedo — linha nenhuma pode parecer contorno.
-  // A MORDIDA: falha na linha + 1px de fenda dentro = aresta lascada.
-  const yN = y - v - h + dd;
-  const t1 = aberto ? 0.30 : 0.45, t2 = aberto ? 0.55 : 0.75;
-  const rb = rng((seed ^ 0x9e37) >>> 0)();
-  const tBite = rb < 0.55 ? 0.15 + (rb / 0.55) * 0.7 : -1;
-  caminho([x-w,y-v],[x-a,yN],[x+a,yN],[x+w,y-v], (px, py, t) => {
-    if (tBite > 0 && Math.abs(t - tBite) < 0.05) { pix(g, px, py + 1, 1, 1, C.fenda); return; }
-    let cor = null;
-    if (t < t1) cor = claro ? C.luzMax : escuro ? C.topo : C.topoLuz;
-    else if (t < t2 || ((px + py) & 1) === 0) cor = claro ? C.topoLuz : escuro ? C.alto : C.topo;
-    if (cor) pix(g, px, py, 1, 1, cor);
-  });
-  // reflexo na aresta vertical oeste (a que encara o sol), apagando ao descer
-  const dv = Math.round(v * 0.4);
-  for (let s = 1; s <= dv; s++)
-    if (s < 3 || ((x - w + s) & 1) === 0) pix(g, x - w, y - v + s, 1, 1, fLuz);
-}
-
-function texTopo(g, x, y, w, v, a, dd, h, hex, tons, seed) {
-  const r = rng(seed);
-  const cx = x, cy = y - v, th = 0.45;
-  // RAMPA DE BANDAS: L = +1 no quadrante NW, -1 no SE — mesma direcao da
-  // sombra projetada. Tres bandas cheias, costura de 1-2px em xadrez em
-  // volta de cada limiar. E o gradiente do pixel art: nunca tom continuo.
-  for (let py = cy - h; py <= cy + h; py++)
-    for (let px = cx - w; px <= cx + w; px++) {
-      if (!noPolig(hex, px, py)) continue;
-      const L = -((px - cx) / w + (py - cy) / h);
-      let cor = L > th ? tons[2] : L < -th ? tons[0] : tons[1];
-      if (L <= th && L > th - 0.30 && ((px + py) & 1) === 0) cor = tons[2];
-      else if (L > -th && L <= -th + 0.30 && ((px + py) & 1) === 1) cor = tons[0];
-      pix(g, px, py, 1, 1, cor);
-    }
-  // racha em degrau, so nos grandes
-  if (w >= 8 && r() < 0.65) {
-    let sx = 0, sy = 0, ok = false;
-    for (let t = 0; t < 24 && !ok; t++) {
-      sx = x - w + 2 + Math.floor(r() * (2*w - 4));
-      sy = y - v - h + 2 + Math.floor(r() * (2*h - 4));
-      ok = noPolig(hex, sx, sy) && noPolig(hex, sx+1, sy+2);
-    }
-    if (ok) {
-      pix(g, sx, sy, 1, 1, C.fenda); pix(g, sx+1, sy+1, 1, 1, C.fenda);
-      pix(g, sx+1, sy+2, 1, 1, C.contato);
-      pix(g, sx-1, sy, 1, 1, tons[2]);
-    }
-  }
-  // UM cacho escuro, nos grandes — a rampa ja faz a variacao; cacho demais
-  // por cima de banda e que vira ruido de TV
-  if (w >= 8 && r() < 0.7) {
-    let cx0 = 0, cy0 = 0, ok = false;
-    for (let t = 0; t < 24 && !ok; t++) {
-      cx0 = x - w + 1 + Math.floor(r() * (2*w - 2));
-      cy0 = y - v - h + 1 + Math.floor(r() * (2*h - 2));
-      ok = noPolig(hex, cx0, cy0) && noPolig(hex, cx0+1, cy0) && noPolig(hex, cx0, cy0+1);
-    }
-    if (ok) {
-      pix(g, cx0, cy0, 1, 1, C.fenda); pix(g, cx0+1, cy0, 1, 1, C.fenda);
-      pix(g, cx0, cy0+1, 1, 1, C.contato);
-    }
-  }
-}
-
-function texFrente(g, x, y, w, v, h, esc, luz, seed) {
-  const r = rng(seed);
-  // PEGAR DE LUZ: 1px de alto colado sob a aresta do topo, terco oeste,
-  // quebrado — o plano de cima devolve um pouco de luz na face
-  for (let i = 1; i <= Math.floor(w * 0.55); i++) {
-    const xi = x - w + i;
-    if (((xi + y - v) & 1) === 0 && r() < 0.7)
-      pix(g, xi, y - v + Math.round(i * h / w) + 1, 1, 1, luz);
-  }
-  // ESTRATOS: costuras dimetricas paralelas a base, pontas em xadrez. A
-  // contagem escala com a ALTURA — face de 26 px leva 2, de 12 leva 1. Foi
-  // aqui que o detalhe sumia: o miolo da face alta nao recebia nada.
-  const nE = Math.max(1, Math.round(v / 11));
-  for (let k = 0; k < nE; k++) {
-    const sy0 = y - v + Math.round(v * (0.30 + 0.45 * k / nE) + r() * 3);
-    for (let xi = x - w + 2; xi <= x - 2; xi++) {
-      const yi = sy0 + Math.round((xi - (x - w)) * h / w);
-      if (yi > y + h - 2) continue;                    // nao pisar a faixa de contato
-      const ponta = xi < x - w + 4 || xi > x - 5;      // extremidades apagam em xadrez
-      if (!ponta || ((xi + yi) & 1) === 0) pix(g, xi, yi, 1, 1, C.fenda);
-    }
-  }
-  // MANCHAS: 2x2 escalonado um degrau abaixo — variacao do mineral, nao ruido
-  const nM = v >= 20 ? 2 : 1;
-  for (let k = 0; k < nM; k++) {
-    const mx = x - w + 2 + Math.floor(r() * Math.max(1, w - 5));
-    const my = y - v + 5 + Math.floor(r() * Math.max(1, v - 12));
-    pix(g, mx, my, 2, 1, esc); pix(g, mx + 1, my + 1, 2, 1, esc);
-  }
-  // RACHA QUE DESCE DA ARESTA: nasce colada no topo e corre 3-5px na face.
-  // Atravessar a aresta e o que vende volume.
-  if (r() < 0.6) {
-    const cx0 = x - w + 3 + Math.floor(r() * Math.max(1, w - 5));
-    const cy0 = y - v + Math.round((cx0 - (x - w)) * h / w) + 2;
-    const comp = 3 + Math.floor(r() * 3);
-    for (let s = 0; s < comp; s++)
-      pix(g, cx0 + Math.round(s * 0.35), cy0 + s, 1, 1, s === comp - 1 ? C.contato : C.fenda);
-  }
-  // faixa de contato, como antes
-  el(g, 'polygon', { points: pts([[x-w,y],[x,y+h],[x,y+h-2],[x-w,y-2]]), fill: esc });
-  for (let i = 0; i <= w; i++) {
-    const xi = x - w + i, yi = y - 2 + Math.round(i * h / w);
-    if (((xi + yi) & 1) === 0) pix(g, xi, yi - 1, 1, 1, esc);
-  }
-}
-
-function texDir(g, x, y, w, v, h, esc, seed) {
-  const r = rng(seed);
-  el(g, 'polygon', { points: pts([[x+w,y],[x,y+h],[x,y+h-1],[x+w,y-1]]), fill: esc });
-  for (let i = 0; i <= w; i++) {
-    const xi = x + w - i, yi = y - 1 + Math.round(i * h / w);
-    if (((xi + yi) & 1) === 0) pix(g, xi, yi - 1, 1, 1, esc);
-  }
-  // face alta nao pode ser 100% chapada: um degrau a menos, 2-3 px, basta
-  if (v >= 16 && r() < 0.7) {
-    const mx = x + 2 + Math.floor(r() * Math.max(1, w - 4));
-    const my = y - v + 4 + Math.floor(r() * Math.max(1, Math.floor(v * 0.5)));
-    pix(g, mx, my, 2, 1, esc); pix(g, mx, my + 1, 1, 1, esc);
-  }
-}
-
-// polilinha amostrada a ~1px; fn(px, py, t) com t = 0..1 ao longo do caminho
-function caminho(p0, p1, p2, p3, fn) {
-  const ps = [p0, p1, p2, p3];
-  let total = 0;
-  for (let i = 1; i < 4; i++) total += Math.hypot(ps[i][0]-ps[i-1][0], ps[i][1]-ps[i-1][1]);
-  let acc = 0;
-  for (let i = 1; i < 4; i++) {
-    const [ax, ay] = ps[i-1], [bx, by] = ps[i];
-    const len = Math.hypot(bx-ax, by-ay), n = Math.max(1, Math.round(len));
-    for (let s = 0; s <= n; s++)
-      fn(Math.round(ax + (bx-ax)*s/n), Math.round(ay + (by-ay)*s/n), (acc + (s/n)*len) / total);
-    acc += len;
-  }
-}
 
 // AO DE ASSENTAMENTO: franja de oclusao sob as arestas de base, estampada
 // ANTES do bloco — cai em cima do que esta atras (topo do bloco de tras ou
@@ -315,25 +136,160 @@ function assenta(g, x, y, w, h) {
   pix(g, x - 1, y + h, 3, 1, C.contato);                    // pino no vertice frontal
 }
 
+// NODULO — o calhau almofadado da referencia. Topo = octogono achatado
+// (tras e frente recortadas, lados W/E cortados 2px); faces = rampa
+// vertical de 3 bandas com costura xadrez; rim light de 1px na aresta
+// frontal do topo; contorno escuro SO na silhueta — a fenda entre calhaus
+// nasce do contorno do da frente recortando o de tras.
+function nodulo(g, x, y, w, v, tom) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); v = Math.round(v);
+  const h = Math.round(w / 2);
+  const escuro = tom === 1, claro = tom === 2, aberto = MODO === 'degrau';
+  const tn = Math.max(2, Math.round(w * 0.45));   // meia-largura da truncao tras/frente
+  const ty = Math.max(1, Math.round(tn / 2));
+  const ce = 2, hc = 1, we = Math.round((w - ce) / 2);
+  const rf = Math.max(2, Math.round(w * 0.28));   // aplanamento do pe frontal
+  const seed = (x * 73 + y * 149 + w * 7 + v * 13) >>> 0;
+
+  // ESC em ordem de luminancia; up/dn andam um degrau; gr so desloca no degrau aberto
+  const ESC = [C.contato, C.fenda, C.dirE, C.dir, C.frenteE, C.frente,
+               C.topoSE, C.frenteC, C.topo, C.topoLuz, C.luzMax];
+  const gi = c => ESC.indexOf(c);
+  const up = c => ESC[Math.min(ESC.length - 1, gi(c) + 1)];
+  const dn = c => ESC[Math.max(0, gi(c) - 1)];
+  const gr = (c, k) => ESC[Math.max(0, Math.min(ESC.length - 1, gi(c) + (aberto ? k : 0)))];
+
+  const topo = gr(claro ? C.topoLuz : escuro ? C.topoSE : C.topo, 1);
+  const nw = up(topo), se = dn(dn(topo)), rim = up(topo);
+  const pM = gr(claro ? C.frenteC : escuro ? C.dirE : C.frente, -1);
+  const pC = up(pM), pE = dn(pM);
+  const dM = gr(claro ? C.frente : escuro ? C.fenda : C.dir, -1);
+  const dT = up(dM), dF = dn(dM);
+
+  // 1) contorno de silhueta (a referencia TEM; 'liso'/'degrau' removem p/ comparar)
+  if (MODO === 'contorno')
+    el(g, 'polygon', { points: pts([
+      [x-tn, y-v-h+ty], [x+tn, y-v-h+ty], [x+w-ce, y-v-h+we], [x+w-ce, y+hc],
+      [x+rf, y+h-1], [x-rf, y+h-1], [x-w+ce, y+hc], [x-w+ce, y-v-h+we]
+    ]), fill: C.traco, stroke: C.traco, 'stroke-width': 1 });
+    // stroke 2 numa peca de 16-26px punha 35,8% da area da rocha em traco,
+    // com corridas horizontais de ate 12px — isso e mancha, nao linha.
+
+  // 2) TOPO octogonal — bandas NW/SE com costura xadrez, aresta de tras
+  //    escura, rim light na frente. Tudo em uma passada por pixel.
+  const oct = [[x-tn,y-v-h+ty],[x+tn,y-v-h+ty],[x+w-ce,y-v-h+we],[x+w-ce,y-v+hc],
+               [x+tn,y-v+h-ty],[x-tn,y-v+h-ty],[x-w+ce,y-v+hc],[x-w+ce,y-v-h+we]];
+  const cy = y - v;
+  for (let py = cy - h; py <= cy + h; py++)
+    for (let px = x - w; px <= x + w; px++) {
+      if (!noPolig(oct, px, py)) continue;
+      const L = -((px - x) / w + (py - cy) / h);
+      let cor = topo;
+      if (L > 0.45 || (L > 0.2 && ((px + py) & 1) === 0)) cor = nw;
+      else if (L < -0.5 || (L < -0.25 && ((px + py) & 1) === 1)) cor = se;
+      if (py < cy && !noPolig(oct, px, py - 1)) cor = se;   // aresta de tras
+      if (py > cy && !noPolig(oct, px, py + 1)) cor = rim;  // rim light frontal
+      pix(g, px, py, 1, 1, cor);
+    }
+  // VEIAS dimetricas: escadinha 2:1, um degrau abaixo, 1-2 por topo
+  const rT = rng(seed);
+  for (let k = 0, nV = w >= 9 ? 2 : 1; k < nV; k++) {
+    const comp = 3 + Math.floor(rT() * 4);
+    const sx = x - tn + 1 + Math.floor(rT() * Math.max(1, 2 * tn - comp - 1));
+    const sy = cy - h + ty + 1 + Math.floor(rT() * Math.max(1, 2 * h - 2 * ty - 3));
+    const esq = rT() < 0.5;
+    for (let i = 0; i < comp; i++) {
+      const px = esq ? sx - i : sx + i, py = sy + (i >> 1);
+      if (noPolig(oct, px, py) && py > cy - h + ty && py < cy + h - ty)
+        pix(g, px, py, 1, 1, se);
+    }
+  }
+  for (let k = 0; k < 2; k++) {   // speckles
+    const px = x - w + 2 + Math.floor(rT() * (2 * w - 4));
+    const py = cy - h + 1 + Math.floor(rT() * (2 * h - 2));
+    if (noPolig(oct, px, py) && py > cy - h + ty && py < cy + h - ty)
+      pix(g, px, py, 1, 1, rT() < 0.5 ? se : nw);
+  }
+
+  // 3) PAREDES — rampa de bandas coluna a coluna; o topo da parede e lido
+  //    do PROPRIO octogono (fundoOct), nunca de formula — zero fenda no rim.
+  const fundoOct = px => { for (let py = cy + h; py >= cy - h; py--)
+                             if (noPolig(oct, px, py)) return py; return cy; };
+  const baseY = xx => xx <= x - rf ? y + hc + Math.round((xx - (x - w + ce)) / 2)
+                    : xx >= x + rf ? y + hc + Math.round((x + w - ce - xx) / 2)
+                    : y + h - 1;
+  const rD = rng((seed ^ 0x27d4) >>> 0);
+  const crack = w >= 9 && rD() < 0.55 ? x + 2 + Math.floor(rD() * (w - 4)) : -1;
+  const cl = 3 + Math.floor(rD() * 2);
+  for (let lado = 0; lado < 2; lado++) {
+    // lado 0 = face esquerda (x-w+ce .. x); lado 1 = direita (x .. x+w-ce).
+    // Antes os dois laços varriam a metade DIREITA, e a esquerda ficava sem
+    // pintura nenhuma: o octogono preenchido de traco aparecia cru ali.
+    const x0 = lado ? x : x - w + ce, x1 = lado ? x + w - ce : x, stp = 1;
+    for (let xx = x0; ; xx += stp) {
+      const ry = fundoOct(xx), by = baseY(xx), H = by - ry;
+      for (let yy = ry; yy <= by; yy++) {
+        const t = (yy - ry) / H;
+        let cor;
+        // COSTURA INVERTIDA: a banda de BAIXO invade a de cima em xadrez.
+        // Antes a costura repintava a propria banda de cima logo abaixo do
+        // limiar, o que so a alongava. Medido a 1x na face esquerda: duas
+        // bandas macicas de 4 px e costura nenhuma.
+        if (lado) {                                   // direita: quase chapada
+          cor = t < 0.18 ? dT : t < 0.72 ? dM : dF;
+          if (t >= 0.18 - 1 / H && t < 0.18 && ((xx + yy) & 1)) cor = dM;
+        } else {                                      // esquerda: rampa de dither
+          cor = t < 0.25 ? pC : t < 0.6 ? pM : pE;
+          if (t >= 0.25 - 1 / H && t < 0.25 && ((xx + yy) & 1)) cor = pM;
+          else if (t >= 0.6 - 1 / H && t < 0.6 && ((xx + yy) & 1)) cor = pE;
+        }
+        // contato de base: 2 px so em parede alta. Numa parede de 9-10 px os
+        // 2 px comiam a faixa onde pE comecaria, e pE nao aparecia nenhuma vez.
+        if (yy > by - (H >= 12 ? 2 : 1)) cor = C.fenda;
+        if (xx === crack && yy > ry + 2 && yy <= ry + 2 + cl) cor = C.fenda;
+        pix(g, xx, yy, 1, 1, cor);
+      }
+      if (xx === x1) break;
+    }
+  }
+  // veia estratigrafica na frente: escadinha paralela ao rim, um degrau abaixo
+  if (w >= 8 && rD() < 0.7) {
+    const sy = y - v + h - ty + 2 + Math.floor(rD() * Math.max(1, v - 5));
+    const sx = x - w + ce + 2 + Math.floor(rD() * Math.max(1, w - 7));
+    const comp = 3 + Math.floor(rD() * 3);
+    for (let i = 0; i < comp; i++) {
+      const px = sx + i, py = sy + (i >> 1);
+      if (px < x - 1 && py < y + h - 3) pix(g, px, py, 1, 1, pE);
+    }
+  }
+  // costura frontal entre as faces: xadrez ralo de fenda
+  for (let yy = y - v + h - ty + 2; yy < y + h - 3; yy++)
+    if (((x + yy) & 1) === 0) pix(g, x, yy, 1, 1, escuro ? C.contato : C.fenda);
+}
+
 function pilha(g, blocos) {
   for (const b of blocos) {
     assenta(g, b[0], b[1], b[2], Math.round(b[2] / 2));
-    bloco(g, b[0], b[1], b[2], b[3], b[4]);
+    nodulo(g, b[0], b[1], b[2], b[3], b[4]);
   }
 }
 
-const P1 = [ [47,34,10,26,2],
-  [38,41,7,14], [56,40,9,17,1],
-  [47,46,8,13] ];
-const P2 = [ [62,34,10,26,2],
-  [52,41,7,16], [72,40,9,20,1],
-  [42,47,8,12], [62,46,10,22,2], [82,45,7,13,1],
-  [52,52,9,13], [72,52,8,12] ];
-const P3 = [ [50,32,10,30,2],
-  [40,39,7,18], [60,38,9,24,1],
-  [30,45,8,12], [50,44,10,24,2], [70,44,7,15,1],
-  [38,51,9,14], [58,51,10,16], [78,50,7,12,1],
-  [46,57,9,12], [66,57,8,11] ];
+// ---- as pilhas: MENOS calhos, MUITO maiores, 3-4 patamares ----
+const P1 = [ // 1 tile — 3 calhos
+  [50, 33, 8, 8, 2],
+  [43, 41, 9, 9, 0], [57, 42, 9, 8, 1]
+];
+const P2 = [ // 2 tiles — 6 calhos
+  [58, 36, 8, 9, 2],
+  [50, 43, 9, 9, 0], [69, 42, 8, 9, 1],
+  [42, 51, 9, 9, 0], [58, 52, 10, 9, 0], [76, 50, 8, 8, 1]
+];
+const P3 = [ // 4 tiles — o amontoado da referencia: 10 calhos, 4 patamares
+  [58, 32, 8, 9, 2],                        // apex
+  [50, 40, 9, 9, 2], [69, 39, 8, 9, 1],     // patamar alto
+  [41, 49, 10, 10, 0], [57, 48, 10, 10, 2], [73, 48, 9, 9, 1],   // medio
+  [33, 59, 11, 10, 0], [51, 61, 13, 10, 0], [69, 60, 11, 9, 1], [82, 57, 7, 8, 1] // base
+];
 
 function chao(pai, ox, oy, borda = true) {
   const g = el(pai, 'g', { transform: `translate(${ox},${oy})` });
